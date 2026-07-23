@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "article-writer",
+  "displayName": "Article Writer",
+  "version": "0.3.0",
+  "description": "Turn a one-line subject into a publish-ready article via an 8-step, gated workflow with deterministic loop caps, a Step-5 plagiarism/attribution pass, and an adversarial fact-check review.",
+  "author": {
+    "name": "Uttakarsh Tikku"
+  },
+  "license": "MIT",
+  "keywords": ["writing", "articles", "content", "research", "fact-check", "workflow"],
+  "defaultEnabled": true,
+  "userConfig": {
+    "audience": {
+      "type": "string",
+      "title": "Target reader / audience",
+      "description": "Default audience if the scope template leaves it unset. Reshapes scope, vocabulary, and depth.",
+      "required": false,
+      "default": "general informed reader"
+    },
+    "angle": {
+      "type": "string",
+      "title": "Angle / stance override",
+      "description": "Fix the angle instead of letting the agent derive it. 'auto' lets the agent choose.",
+      "required": false,
+      "default": "auto"
+    },
+    "length": {
+      "type": "string",
+      "title": "Length / format target",
+      "description": "Constrains scope and structure (e.g. short, medium, long, or a word count).",
+      "required": false,
+      "default": "medium"
+    },
+    "tone": {
+      "type": "string",
+      "title": "Tone / voice",
+      "description": "Register and formality of the writing.",
+      "required": false,
+      "default": "neutral, plain"
+    },
+    "source_policy": {
+      "type": "string",
+      "title": "Source policy",
+      "description": "Which evidence is admissible. 'default' uses the shipped whitelist/blacklist (requirements §6).",
+      "required": false,
+      "default": "default"
+    },
+    "source_quality_threshold": {
+      "type": "string",
+      "title": "Source-quality threshold",
+      "description": "Minimum tier a load-bearing claim may rest on.",
+      "required": false,
+      "default": "peer-reviewed / reputable only"
+    },
+    "per_gate_cap": {
+      "type": "number",
+      "title": "Per-gate iteration cap",
+      "description": "Max retries per QA gate (Steps 1-7) before escalating upstream.",
+      "required": false,
+      "default": 3,
+      "min": 1
+    },
+    "adversarial_cap": {
+      "type": "number",
+      "title": "Adversarial review cap (max)",
+      "description": "Upper bound on the Step 8 adversarial review loop.",
+      "required": false,
+      "default": 5,
+      "min": 1
+    },
+    "adversarial_min": {
+      "type": "number",
+      "title": "Adversarial review floor (min)",
+      "description": "Minimum number of Step 8 reviews that always run.",
+      "required": false,
+      "default": 1,
+      "min": 1
+    },
+    "escalation_routing": {
+      "type": "string",
+      "title": "Escalation routing",
+      "description": "Where a capped/failed gate sends the work. 'default' uses the requirements §5.1 table.",
+      "required": false,
+      "default": "default"
+    },
+    "plagiarism_ngram": {
+      "type": "number",
+      "title": "Plagiarism overlap sensitivity (consecutive words)",
+      "description": "The minimum run of consecutive words the Step 5 originality scan treats as a verbatim/near-verbatim match against captured source text. Lower = stricter (more flags). Detection sensitivity only; ethical remedy is chosen per passage.",
+      "required": false,
+      "default": 8,
+      "min": 3
+    },
+    "citation_style": {
+      "type": "string",
+      "title": "Citation / referencing style",
+      "description": "Referencing scheme for in-text citations and the bibliography. One of: apa, mla, chicago-author-date, chicago-notes, harvard, ieee, vancouver, none. If unset, Step 1 asks you explicitly.",
+      "required": false,
+      "default": "apa"
+    },
+    "output_format": {
+      "type": "string",
+      "title": "Final article format",
+      "description": "Format of the published article deliverable: 'docx' (Microsoft Word, default) or 'md' (Markdown).",
+      "required": false,
+      "default": "docx"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "article-writer",
+  "description": "Marketplace hosting the article-writer plugin.",
+  "owner": {
+    "name": "Uttakarsh Tikku"
+  },
+  "plugins": [
+    {
+      "name": "article-writer",
+      "source": "./",
+      "description": "Turn a one-line subject into a publish-ready article via an 8-step, gated workflow with deterministic loop caps and an adversarial fact-check review."
+    }
+  ]
+}
