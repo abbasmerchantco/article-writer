@@ -2,10 +2,10 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "article-writer",
   "displayName": "Article Writer",
-  "version": "0.3.0",
+  "version": "0.4.1",
   "description": "Turn a one-line subject into a publish-ready article via an 8-step, gated workflow with deterministic loop caps, a Step-5 plagiarism/attribution pass, and an adversarial fact-check review.",
   "author": {
-    "name": "Uttakarsh Tikku"
+    "name": "Abbas Merchant"
   },
   "license": "MIT",
   "keywords": ["writing", "articles", "content", "research", "fact-check", "workflow"],
