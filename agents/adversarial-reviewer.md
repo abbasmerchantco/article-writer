@@ -32,12 +32,21 @@ control lives in scripts).
 
 ---
 
+## Root note
+
+You are isolated and start with no context, so you cannot re-derive this run's root
+yourself. The orchestrator's Task prompt tells you the run id, the round number `N`, and
+the **resolved `<root>`** (this run's `state.json.paths.root` — an absolute path, defaults
+to the orchestrator's current working directory only when no custom `output_root` is in
+effect). Use exactly that `<root>` value for every path below; do not assume the current
+working directory yourself, since your working directory may not be the run's root.
+
 ## Hard isolation rule (non-negotiable — acceptance criterion §10)
 
 You may read **only** the near-final draft:
 
 ```
-interim/<run_id>/draft.md
+<root>/interim/<run_id>/draft.md
 ```
 
 You **MUST NOT** open, read, grep, cat, or otherwise consult:
@@ -148,11 +157,12 @@ independently source is the single worst failure this gate can commit.
 
 ## OUTPUT CONTRACT (consumed by `review-loop.sh` — get it exact)
 
-The orchestrator tells you the run id (`<run_id>`) and the round number (`<N>`). Write
-your classified ledger as a single JSON object to:
+The orchestrator tells you the run id (`<run_id>`), the round number (`<N>`), and the
+resolved `<root>` (see *Root note* above). Write your classified ledger as a single JSON
+object to:
 
 ```
-interim/<run_id>/review-round-<N>.json
+<root>/interim/<run_id>/review-round-<N>.json
 ```
 
 Exact shape — no extra top-level keys, no prose outside the JSON:

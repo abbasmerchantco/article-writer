@@ -11,8 +11,22 @@ prose yourself — the step skills and the Step 8 agent do that. Your job is to 
 them, keep `state.json` honest, and **obey the deterministic scripts** (requirements §5,
 §8; `docs/architecture-decision.md`).
 
-Runs live under the current working directory: `input/<run_id>/`, `interim/<run_id>/`,
-`output/<run_id>/`. The state file is `interim/<run_id>/state.json`.
+Runs live under a **run root** (`input/<run_id>/`, `interim/<run_id>/`,
+`output/<run_id>/`), which defaults to the current working directory but is
+overridable via the `output_root` control (requirements §2.4;
+`commands/write-article.md` § *Resolving the run root*). **Never assume the
+root is the current working directory** — resolve `<root>` first:
+
+- If you were handed a `run_id` by `write-article.md`, its `state.json` at
+  `<root>/interim/<run_id>/state.json` already has `<root>` recorded at
+  `paths.root` — but you need `<root>` to find that file in the first place.
+  In practice `write-article.md` already resolved and used `<root>` to locate
+  this run before dispatching to you, so treat whatever path it handed you as
+  the source of truth, and re-derive `<root>` as the directory two levels
+  above whichever `state.json` you were pointed at (or read `paths.root` from
+  that same file once opened — they must agree).
+- From here on this document writes `interim/<run_id>/...` etc. for
+  readability; read every such path as `<root>/interim/<run_id>/...`.
 
 ## Non-negotiable invariants (from the Phase 2 decision)
 1. **Scripts own the numbers.** Per-gate counters and escalation history are mutated
@@ -89,9 +103,11 @@ adversarial loop. **You produce no judgement here and you count nothing** — th
 `adversarial-reviewer` agent judges; `review-loop.sh` controls the loop. Each round:
 
 1. **Dispatch the `adversarial-reviewer` agent** (isolated context) via the Task tool.
-   Tell it the run id and the round number `N`. It re-derives and re-sources claims
-   independently (it must NOT read the author's Step 2 citations) and writes its classified
-   ledger to `interim/<run_id>/review-round-<N>.json` (schema: `{round,
+   Tell it the run id, the **resolved `<root>`** (it is isolated and starts with no
+   context, so it cannot re-derive this itself — pass the literal absolute path), and the
+   round number `N`. It re-derives and re-sources claims independently (it must NOT read
+   the author's Step 2 citations) and writes its classified ledger to
+   `<root>/interim/<run_id>/review-round-<N>.json` (schema: `{round,
    verification_guarantee, ledger[]}`). You do not review the article yourself.
 
 2. **Hand the ledger to the deterministic controller** — it owns rounds, the min/max
@@ -120,9 +136,11 @@ adversarial loop. **You produce no judgement here and you count nothing** — th
    verification) and this independent re-sourcing check external truth (requirements §5.2).
 
 4. **Publish (on `STOP-CLEAN` or `CAP-REACHED`).** With `status` at `step-8`, emit the
-   deliverables deterministically:
+   deliverables deterministically, passing the resolved `<root>` explicitly (its default
+   is `.`, but pass the real value whenever a custom `output_root` is in effect — this run's
+   `state.json.paths.root` is the source of truth):
    ```
-   ${CLAUDE_PLUGIN_ROOT}/scripts/make-manifest.sh <run_id>
+   ${CLAUDE_PLUGIN_ROOT}/scripts/make-manifest.sh <run_id> <root>
    ```
    It copies the article, writes `sources.md` (with tiers), and writes the run manifest
    — stating adversarial rounds, which escalations fired, per-gate iteration counts, the

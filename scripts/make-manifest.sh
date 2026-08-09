@@ -16,17 +16,24 @@
 # This is defence-in-depth alongside the PreToolUse guard — deterministic emission cannot
 # be talked around by invoking this script early (requirements §11).
 #
-# Usage:  make-manifest.sh <run_id>       (run from the run's working directory)
+# Usage:  make-manifest.sh <run_id> [root_dir]
+#   <root_dir> is the run's root (requirements §2.4 output_root; contracts.md §1a) — the
+#   base under which input/, interim/, output/ live. Defaults to "." (current working
+#   directory, original behavior) so existing callers/tests are unaffected. When a run was
+#   created with a custom output_root, the caller MUST pass that run's state.json
+#   "paths.root" here — orchestrator already read that file to reach this point, so it
+#   already has the value.
 # No jq, no network, bash 3.2 (macOS).
 
 set -euo pipefail
 
 die() { echo "make-manifest.sh: $1" >&2; exit "${2:-1}"; }
-[ "$#" -eq 1 ] || die "usage: make-manifest.sh <run_id>" 1
+[ "$#" -eq 1 ] || [ "$#" -eq 2 ] || die "usage: make-manifest.sh <run_id> [root_dir]" 1
 RUN="$1"
-STATE="interim/$RUN/state.json"
-DRAFT="interim/$RUN/draft.md"
-OUTDIR="output/$RUN"
+ROOT_DIR="${2:-.}"
+STATE="$ROOT_DIR/interim/$RUN/state.json"
+DRAFT="$ROOT_DIR/interim/$RUN/draft.md"
+OUTDIR="$ROOT_DIR/output/$RUN"
 [ -f "$STATE" ] || die "state file not found: $STATE" 1
 [ -d "$OUTDIR" ] || die "output dir not found: $OUTDIR" 1
 

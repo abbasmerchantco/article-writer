@@ -5,7 +5,47 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-09
+
+### Added
+- **`output_root` control — persistent, configurable runs directory (requirements
+  §2.4/§3.1a).** All run folders (`input/`, `interim/`, `output/`) previously lived
+  strictly under the current working directory, which is fine when that's a stable
+  location but silently loses runs when Claude is launched from a temporary/sandboxed
+  session directory that gets cleaned up. `output_root` (a plugin `userConfig` string,
+  default blank = unchanged behavior) lets you point every run at a durable, persistent
+  path — e.g. a OneDrive-synced folder — instead. `init-run.sh` resolves it (via
+  `AW_OUTPUT_ROOT`), creates the directory if missing, always resolves it to an absolute
+  path, and records it as `paths.root` in that run's `trigger.json`/`state.json` — the
+  root a run is *created* with is the root it keeps for its lifetime, independent of any
+  later change to the control or a later session's working directory. `make-manifest.sh`
+  gained an optional `[root_dir]` second argument (defaults to `.`, so existing callers
+  and tests are unaffected). `commands/write-article.md`, `skills/orchestrator`, all
+  seven `skills/step-N-*`, and `agents/adversarial-reviewer` were updated to resolve and
+  thread `<root>` through every `input/`/`interim/`/`output/` path reference instead of
+  assuming the current working directory. `gate-guard.sh` needed **no change** — its
+  `PreToolUse` matching is already path-pattern-based, not cwd-based, so it enforces the
+  publish-stage guard correctly regardless of where the run root is. Backward compatible:
+  runs created before this control existed (no `paths.root` field) keep resolving to the
+  current working directory, and Phase B's resumability scan and the slug-dedup scan both
+  check the legacy location too when a custom root is in effect.
+- `state.json` now always includes a top-level `references: []` field at initialization
+  (it was previously written only once Step 2 populated it, leaving it briefly absent
+  from the documented schema — `contracts.md` §4 always specified it).
+
 ### Fixed
+- **Every `scripts/*.sh` and `tests/*.sh` file had CRLF line endings in the working
+  tree**, which made every one of them fail to parse under bash (`syntax error near
+  unexpected token $'{\r''`) — i.e. the plugin could not actually run on a Windows
+  checkout. The git-tracked blobs are LF; the CRLF was introduced by a Windows checkout's
+  default line-ending conversion, undetected because there was no `.gitattributes`
+  pinning the ending. Normalized all scripts back to LF and added `.gitattributes`
+  (`*.sh`/`*.md`/`*.json`/`*.html` → `eol=lf`) so this cannot silently regress.
+- **Removed a broken, hardcoded `output_root` hack.** `init-run.sh` briefly contained a
+  hardcoded `BASE_DIR="C:/Users/.../ArticleWriterRuns"` that created folders there — but
+  the two path variables it set were unconditionally overwritten a few lines later, so it
+  had no effect beyond leaving behind stray empty folders. Replaced with the general,
+  configurable `output_root` mechanism above.
 - **`make-manifest.sh` — shell/python injection hardening.** The two `citation_style` /
   `output_format` lookups interpolated the state path directly into a `python3 -c` source
   string; a run path containing a quote could terminate the literal and inject code. Both

@@ -59,6 +59,35 @@ name_seq() {
 }
 
 # ---------------------------------------------------------------------------
+# Root directory resolution (contracts.md §1a; requirements §2.4 output_root).
+#
+# All three top-level folders (input/, interim/, output/) live under a "run
+# root". By default that root is the current working directory (original
+# behavior). If AW_OUTPUT_ROOT is set (from the output_root plugin control),
+# it overrides the root — this lets runs persist in a durable location (e.g.
+# a OneDrive-synced folder) instead of wherever Claude happened to be
+# launched from, which may be an ephemeral session sandbox.
+#
+# The resolved root is ALWAYS an absolute path (so it stays valid even if a
+# later session resumes this run from a different cwd), created if missing,
+# and recorded in trigger.json / state.json ("paths.root") so every other
+# script/skill can find the run without re-deriving AW_OUTPUT_ROOT itself.
+# ---------------------------------------------------------------------------
+resolve_root() {
+  requested="${AW_OUTPUT_ROOT:-}"
+  if [ -z "$requested" ]; then
+    pwd
+    return 0
+  fi
+  mkdir -p "$requested" 2>/dev/null || die "AW_OUTPUT_ROOT is not creatable as a directory: $requested"
+  [ -d "$requested" ] || die "AW_OUTPUT_ROOT exists but is not a directory: $requested"
+  (cd "$requested" && pwd)
+}
+
+ROOT_DIR="$(resolve_root)"
+[ -n "$ROOT_DIR" ] || die "could not resolve a run root directory"
+
+# ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
 MODE="normal"
@@ -90,11 +119,20 @@ esac
 # ---------------------------------------------------------------------------
 if [ "$MODE" = "reuse" ]; then
   RUN_ID="$1"
-  if [ -d "input/$RUN_ID" ] || [ -d "interim/$RUN_ID" ] || [ -d "output/$RUN_ID" ]; then
+  if [ -d "$ROOT_DIR/input/$RUN_ID" ] || [ -d "$ROOT_DIR/interim/$RUN_ID" ] || [ -d "$ROOT_DIR/output/$RUN_ID" ]; then
     printf 'RUN %s\n' "$RUN_ID"
     exit 0
   fi
-  die "no existing run found for run_id: $RUN_ID"
+  # Backward-compat: a run created before AW_OUTPUT_ROOT existed (or with it
+  # unset this time) may live directly under the plain current working
+  # directory instead of $ROOT_DIR. Only relevant when the two differ.
+  if [ "$ROOT_DIR" != "$(pwd)" ]; then
+    if [ -d "input/$RUN_ID" ] || [ -d "interim/$RUN_ID" ] || [ -d "output/$RUN_ID" ]; then
+      printf 'RUN %s\n' "$RUN_ID"
+      exit 0
+    fi
+  fi
+  die "no existing run found for run_id: $RUN_ID (looked under $ROOT_DIR)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -111,17 +149,23 @@ SLUG=$(derive_slug "$RAW_SUBJECT")
 # --force-new skips this scan.
 # ---------------------------------------------------------------------------
 if [ "$MODE" != "force-new" ]; then
-  for base in input interim output; do
-    [ -d "$base" ] || continue
-    for d in "$base"/*/; do
-      [ -d "$d" ] || continue
-      name=$(basename "$d")
-      existing=$(name_slug "$name")
-      if [ -n "$existing" ] && [ "$existing" = "$SLUG" ]; then
-        printf 'DUPLICATE_MATCH %s\n' "$name"
-        exit 2
-      fi
+  # Scan $ROOT_DIR, and — if it differs from the plain cwd (custom
+  # AW_OUTPUT_ROOT in effect) — also scan the cwd, so a run created before
+  # output_root was set (or in a session without it) still counts as a match.
+  for scan_base in "$ROOT_DIR" "$(pwd)"; do
+    for base in input interim output; do
+      [ -d "$scan_base/$base" ] || continue
+      for d in "$scan_base/$base"/*/; do
+        [ -d "$d" ] || continue
+        name=$(basename "$d")
+        existing=$(name_slug "$name")
+        if [ -n "$existing" ] && [ "$existing" = "$SLUG" ]; then
+          printf 'DUPLICATE_MATCH %s\n' "$name"
+          exit 2
+        fi
+      done
     done
+    [ "$ROOT_DIR" != "$(pwd)" ] || break
   done
 fi
 
@@ -130,11 +174,14 @@ fi
 # prefix across all three top-level folders, take max NNNNN, increment.
 # Scoped per day, resets to 00001 each new date.
 # ---------------------------------------------------------------------------
+# Sequence is scoped to where the run will actually be created ($ROOT_DIR) —
+# a custom output_root starts its own 00001 sequence, independent of any
+# legacy runs left behind under a plain cwd.
 DATE=$(date +%Y%m%d)
 max=0
 for base in input interim output; do
-  [ -d "$base" ] || continue
-  for d in "$base"/${DATE}-*/; do
+  [ -d "$ROOT_DIR/$base" ] || continue
+  for d in "$ROOT_DIR/$base"/${DATE}-*/; do
     [ -d "$d" ] || continue
     name=$(basename "$d")
     seq_part=$(name_seq "$name")
@@ -150,9 +197,16 @@ SEQ=$(printf '%05d' "$next")
 RUN_ID="${DATE}-${SEQ}-${SLUG}"
 
 # ---------------------------------------------------------------------------
-# Create the folder triplet under the current working directory.
+# Create the folder triplet under the resolved root (requirements §2.4
+# output_root; defaults to the current working directory, unchanged from
+# original behavior).
 # ---------------------------------------------------------------------------
-mkdir -p "input/$RUN_ID" "interim/$RUN_ID" "output/$RUN_ID"
+mkdir -p "$ROOT_DIR/input/$RUN_ID" \
+         "$ROOT_DIR/interim/$RUN_ID" \
+         "$ROOT_DIR/output/$RUN_ID"
+
+TRIGGER_PATH="$ROOT_DIR/input/$RUN_ID/trigger.json"
+STATE_PATH="$ROOT_DIR/interim/$RUN_ID/state.json"
 
 # ---------------------------------------------------------------------------
 # Resolve controls from AW_* env vars, falling back to the §4 defaults.
@@ -171,9 +225,6 @@ PLAGIARISM_NGRAM="${AW_PLAGIARISM_NGRAM:-8}"
 
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-TRIGGER_PATH="input/$RUN_ID/trigger.json"
-STATE_PATH="interim/$RUN_ID/state.json"
-
 # ---------------------------------------------------------------------------
 # Write trigger.json (§5) and state.json (§4) via python3. Values are passed
 # through the environment (no shell interpolation into the JSON), and each file
@@ -181,7 +232,7 @@ STATE_PATH="interim/$RUN_ID/state.json"
 # ---------------------------------------------------------------------------
 export AW_RUN_ID="$RUN_ID" AW_DATE="$DATE" AW_SEQ="$SEQ" AW_SLUG="$SLUG" \
   AW_RAW_SUBJECT="$RAW_SUBJECT" AW_TIMESTAMP="$TIMESTAMP" \
-  AW_TRIGGER_PATH="$TRIGGER_PATH" AW_STATE_PATH="$STATE_PATH" \
+  AW_TRIGGER_PATH="$TRIGGER_PATH" AW_STATE_PATH="$STATE_PATH" AW_ROOT_DIR="$ROOT_DIR" \
   AW_C_AUDIENCE="$AUDIENCE" AW_C_ANGLE="$ANGLE" AW_C_LENGTH="$LENGTH" \
   AW_C_TONE="$TONE" AW_C_SOURCE_POLICY="$SOURCE_POLICY" \
   AW_C_SOURCE_QUALITY_THRESHOLD="$SOURCE_QUALITY_THRESHOLD" \
@@ -200,7 +251,10 @@ def as_int(name):
         sys.stderr.write("control %s must be an integer, got: %r\n" % (name, v))
         sys.exit(1)
 
+root_dir = os.environ["AW_ROOT_DIR"]
+
 controls = {
+    "output_root": root_dir,
     "audience": os.environ["AW_C_AUDIENCE"],
     "angle": os.environ["AW_C_ANGLE"],
     "length": os.environ["AW_C_LENGTH"],
@@ -219,12 +273,19 @@ ts = os.environ["AW_TIMESTAMP"]
 raw_subject = os.environ["AW_RAW_SUBJECT"]
 slug = os.environ["AW_SLUG"]
 
+# paths.root is the canonical, absolute base for this run's input/interim/
+# output folders (requirements §2.4 output_root; contracts.md §1a). Every
+# script/skill downstream should resolve run paths as f"{paths.root}/input/
+# {run_id}/..." etc. instead of assuming the current working directory —
+# this is what makes a run resumable in a later session even if that
+# session's cwd differs from the one that created the run.
 trigger = {
     "run_id": run_id,
     "raw_subject": raw_subject,
     "slug": slug,
     "timestamp": ts,
     "controls": controls,
+    "paths": {"root": root_dir},
 }
 
 state = {
@@ -243,9 +304,11 @@ state = {
         "reconciled": None,
     },
     "controls": controls,
+    "paths": {"root": root_dir},
     "current_step": 0,
     "hypothesis": {"text": None, "hardened_to_thesis": False},
     "research": {"claims": [], "open_questions": []},
+    "references": [],
     "placeholders": [],
     "gates": {
         "step-1": {"fails": 0},

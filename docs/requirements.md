@@ -74,6 +74,7 @@ Each control changes how the same input transforms into output. All have default
 | Per-gate iteration cap | 3 | Max retries per QA gate before escalation |
 | Adversarial review cap | max 5, min 1 | Bounds the Step 8 review loop |
 | Escalation routing | as specified §5 | Where a capped/failed gate sends the work |
+| Runs root directory (`output_root`) | current working directory | Absolute path where all run folders (`input/`, `interim/`, `output/`) are stored. Lets runs persist in a durable, synced location instead of wherever the agent happened to be launched from — see §3.1a |
 
 ### 2.5 External dependency (declared, not hidden)
 Steps 2 and 8 require **independent source access** (web search or an equivalent fact-check capability). This is not an input or a control — it is a **precondition** the plugin needs from its environment. If unavailable, the plugin can only check internal consistency, not external truth, and must say so rather than imply verification it did not perform.
@@ -83,13 +84,34 @@ Steps 2 and 8 require **independent source access** (web search or an equivalent
 ## 3. Run initialization & folder structure
 
 ### 3.1 The three folders
-On invocation, in the current working directory (the directory Claude Code is run from), the plugin ensures these exist:
+On invocation, under the **run root** (§3.1a), the plugin ensures these exist:
 
 ```
 input/      # one subfolder per run: the commission / trigger log
 interim/    # one subfolder per run: WIP + state
 output/     # one subfolder per run: deliverables
 ```
+
+### 3.1a Run root (`output_root` control)
+
+By default the run root is the current working directory (the directory the agent is run
+from) — this was the only behavior before the `output_root` control existed, and remains
+the default with it blank. If `output_root` is set to an absolute path, that path becomes
+the run root instead: `init-run.sh` creates it if missing, resolves it to an absolute
+path, and records it as `paths.root` in both `trigger.json` and every run's `state.json`.
+
+This exists because "the directory the agent is run from" is not always a stable,
+persistent location — a session may be launched from a temporary or sandboxed working
+directory that is cleaned up afterward, which would otherwise silently lose completed
+runs and their deliverables. Pointing `output_root` at a durable, synced folder (e.g. a
+OneDrive- or Dropbox-backed directory) makes runs outlive the session that produced them.
+
+A run's root is fixed at the moment it is created (`paths.root` in its own `state.json`)
+and does not change if `output_root` is edited later or a later session's working
+directory differs — every component that resumes or references an existing run reads
+`paths.root` from that run's own state rather than re-deriving the currently-configured
+root. A run created before this control existed has no `paths.root` field; treat that as
+"this run's root is the current working directory" for backward compatibility.
 
 ### 3.2 Run identifier and folder naming
 Each run gets one identifier used as the **shared folder name across all three** top-level folders:
@@ -337,6 +359,9 @@ article-writer/
 The run **state file** (e.g. `interim/<run>/state.json`) is the working memory passed between steps. It must hold at least:
 
 - run id, slug, raw subject, timestamps;
+- **the run's root directory** (`paths.root`, §3.1a) — the absolute base for this run's
+  `input/`, `interim/`, `output/` folders, fixed at creation and never re-derived from a
+  later session's working directory or a subsequently-edited `output_root` control;
 - **run status** (`awaiting-scope` → in-progress per step → `published`), used by `continue` to resume and to decide resumability;
 - whether the scope template has been completed, and which mandatory fields (if any) are still blank;
 - active control values;

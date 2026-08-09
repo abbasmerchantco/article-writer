@@ -15,7 +15,13 @@ each other.
 
 ## Entry precondition
 
-- The run's `state.json` (at `interim/<run_id>/state.json`) is at `status: step-5`,
+**Root note:** every `input/`, `interim/`, `output/` path in this skill is relative to
+this run's root `<root>` (its `state.json.paths.root`, or the current working directory
+for a pre-`output_root` run) — the orchestrator that dispatched you already resolved it
+to find this run; use that same value. See `commands/write-article.md` § *Resolving the
+run root*.
+
+- The run's `state.json` (at `<root>/interim/<run_id>/state.json`) is at `status: step-5`,
   `current_step: 5`, with Step 5's revision passed — the body is stable. (Convention:
   `status: step-N` means step N is *complete*; the orchestrator dispatches step N+1.)
 - Read the current `state.json` and the revised draft at `interim/<run_id>/draft.md` now,

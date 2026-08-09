@@ -14,7 +14,13 @@ Step 3 onward. The hypothesis stays **provisional** through this whole step.
 
 ## Entry precondition
 
-- Step 1 passed: this run's `state.json` (at `interim/<run_id>/state.json`) is at
+**Root note:** every `input/`, `interim/`, `output/` path in this skill is relative to
+this run's root `<root>` (its `state.json.paths.root`, or the current working directory
+for a pre-`output_root` run) — the orchestrator that dispatched you already resolved it
+to find this run; use that same value. See `commands/write-article.md` § *Resolving the
+run root*.
+
+- Step 1 passed: this run's `state.json` (at `<root>/interim/<run_id>/state.json`) is at
   `current_step: 1`, `status: step-1`, with `scope.reconciled` populated and
   `hypothesis.text` set, `hypothesis.hardened_to_thesis: false`.
 - Read `state.json` now — the reconciled scope, the provisional hypothesis, the

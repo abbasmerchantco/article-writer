@@ -13,7 +13,15 @@ set a *provisional* working hypothesis. Do not begin research or writing here.
 
 ## Entry precondition
 
-- The human has completed `input/<run_id>/scope-template.md`.
+**Root note:** every `input/`, `interim/`, `output/` path in this skill is relative to
+this run's root `<root>`, not necessarily the current working directory. Whatever
+dispatched you (`write-article.md` / the orchestrator) already resolved `<root>` to find
+this run in the first place — use that same value throughout (it also lives in
+`state.json.paths.root` once you read that file, for a pre-`output_root` run with no such
+field, fall back to the current working directory). See `commands/write-article.md` §
+*Resolving the run root*.
+
+- The human has completed `<root>/input/<run_id>/scope-template.md`.
 - Phase B has already read the template and this run's `state.json` (at
   `interim/<run_id>/state.json`) is at `status: awaiting-scope`, `current_step: 0`.
 - Read the completed template and the current `state.json` now before doing anything

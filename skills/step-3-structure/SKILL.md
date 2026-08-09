@@ -15,7 +15,13 @@ what order, and why — Steps 4 and 6 do the writing.
 
 ## Entry precondition
 
-- Step 2 has passed its gate; `interim/<run_id>/state.json` shows research captured under
+**Root note:** every `input/`, `interim/`, `output/` path in this skill is relative to
+this run's root `<root>` (its `state.json.paths.root`, or the current working directory
+for a pre-`output_root` run) — the orchestrator that dispatched you already resolved it
+to find this run; use that same value. See `commands/write-article.md` § *Resolving the
+run root*.
+
+- Step 2 has passed its gate; `<root>/interim/<run_id>/state.json` shows research captured under
   `research.claims[]` (each `{ claim, source, tier, independent }`) and
   `research.open_questions[]`, with `hypothesis.hardened_to_thesis` still **false** and
   `hypothesis.text` holding the *provisional* working hypothesis from Step 1.

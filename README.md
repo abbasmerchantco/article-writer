@@ -26,9 +26,11 @@ way it is, and the honest limit of that guarantee) ·
 ```
 
 Phase A allocates the run and stops; you complete the scope template (mandatory: audience,
-purpose), then Phase B reconciles scope and runs Steps 1–8. Runs live under the current
-working directory in `input/` (commission), `interim/` (WIP + state), `output/`
-(deliverables), each with a per-run subfolder named `YYYYMMDD-NNNNN-<slug>`.
+purpose), then Phase B reconciles scope and runs Steps 1–8. Runs live under the **run
+root** — the current working directory by default, or a persistent path you configure via
+the `output_root` control (see *Controls* below) — in `input/` (commission), `interim/`
+(WIP + state), `output/` (deliverables), each with a per-run subfolder named
+`YYYYMMDD-NNNNN-<slug>`.
 
 ## The 8 steps
 
@@ -71,12 +73,13 @@ is the enforcement mechanism described above, and it is ~100 lines of reviewable
 reads state and writes nothing; writes outside `output/` are passed straight through.
 
 No script in this repo makes a network call, spawns a background process, or writes outside
-the run folders in your current working directory.
+the run folders under the resolved run root (the current working directory by default, or
+the `output_root` you configure).
 
 ### Deterministic scripts (the enforcement core)
 | Script | Role |
 |---|---|
-| `init-run.sh` | Allocate `YYYYMMDD-NNNNN`, derive slug, create the 3 folders, dedup-check, init state. |
+| `init-run.sh` | Resolve the run root (`output_root` or cwd), allocate `YYYYMMDD-NNNNN`, derive slug, create the 3 folders, dedup-check, init state. |
 | `gate-counter.sh` | Sole mutator of per-gate counters; escalates at the cap per the §5.1 routing table. |
 | `gate-guard.sh` | `PreToolUse` backstop — blocks deliverable writes to `output/` before the publish stage. |
 | `review-loop.sh` | Step 8 loop control: round counting, min/max bound, severity routing. |
@@ -96,6 +99,16 @@ Every tuning knob (audience, angle, length, tone, source policy, quality thresho
 per-gate cap, adversarial cap, escalation routing) has a default and is overridable via the
 manifest `userConfig` or per run. See `plugin.json`.
 
+**Runs root (`output_root`).** By default, runs are stored under `input/`, `interim/`,
+`output/` in whatever directory Claude was launched from — which can be a temporary or
+sandboxed session directory that disappears afterward. Set `output_root` to an absolute,
+persistent path (e.g. a OneDrive- or Dropbox-synced folder) to keep every run there
+instead. `init-run.sh` creates the directory if needed and records it as `paths.root` in
+that run's `trigger.json`/`state.json`; the root a run was *created* with is what it keeps
+for its lifetime, even if `output_root` is changed later or a later session's working
+directory differs. Runs created before this control existed keep working unchanged
+(resolved as "root = current working directory").
+
 ## Verification
 
 Deterministic behaviour is covered by runnable harnesses:
@@ -105,6 +118,8 @@ bash tests/phase1-core.sh        # allocation, per-day reset, slug halt, cap-3 e
 bash tests/phase2-guard.sh       # PreToolUse guard blocks premature deliverable writes
 bash tests/phase4-review.sh      # adversarial loop routing/cap/min, manifest emission
 bash tests/phase-originality.sh  # Step 5 plagiarism scan + remedy-landed verification
+bash tests/phase6-refs-docx.sh   # citation formatting, docx conversion
+bash tests/phase7-output-root.sh # output_root: custom root, dedup/sequence scoping, backward compat
 bash tests/acceptance.sh         # every requirements §10 acceptance criterion
 ```
 
@@ -144,7 +159,7 @@ marketplace source, and enable `article-writer`.
 Deterministic behaviour is contract-first: [`docs/contracts.md`](docs/contracts.md) is
 authoritative for `state.json` and the gate interfaces, and every script cites the spec
 section it implements. Changes to the enforcement core should come with a test in
-`tests/` — the existing harnesses cover 118 checks and are expected to stay green.
+`tests/` — the existing harnesses cover 136 checks and are expected to stay green.
 
 ## License
 

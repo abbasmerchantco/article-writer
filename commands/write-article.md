@@ -18,14 +18,49 @@ only jobs are: set up a run (Phase A), or select and resume a run and hand off
 to the right skill (Phase B). **You do not perform any of the 8 workflow
 steps yourself** — the step skills and the orchestrator do that.
 
-Runs live under the **current working directory** (where Claude Code was
-launched), in three sibling folders: `input/`, `interim/`, `output/`. Each run
-has an identically-named subfolder in all three:
-`input/<run_id>/`, `interim/<run_id>/`, `output/<run_id>/`.
+Runs live under a **run root**, in three sibling folders: `input/`, `interim/`,
+`output/`. Each run has an identically-named subfolder in all three:
+`input/<run_id>/`, `interim/<run_id>/`, `output/<run_id>/`. By default the run
+root is the **current working directory** (where Claude was launched) — but it
+is overridable (see below), because that directory can be an ephemeral
+session/sandbox path that disappears, which loses runs.
 
 Deterministic scripts under `${CLAUDE_PLUGIN_ROOT}/scripts/` own folder
 allocation, the state file, and gate counters. Never hand-edit `state.json`
 counters — the scripts are the sole mutator.
+
+## Resolving the run root (requirements §2.4 `output_root`)
+
+Do this **once, first**, before Phase A or Phase B — every path in this file
+and in the skills it hands off to is relative to the resolved root, not
+blindly to wherever Claude happens to be running from.
+
+1. Read the plugin's `output_root` control (from `userConfig`, or however
+   your run's control overrides are supplied). If it is set (non-blank),
+   that is the **requested root** — an absolute path such as a OneDrive-
+   synced folder. If it is blank/unset, the root is the current working
+   directory (original behavior; nothing else below changes).
+2. Export it so every script invocation resolves the same way:
+   ```
+   export AW_OUTPUT_ROOT="<the requested root, or empty if unset>"
+   ```
+   `init-run.sh` treats an empty value as "use cwd," creates the directory if
+   it does not exist, and always resolves it to an **absolute** path — which
+   it then records in `trigger.json`/`state.json` as `paths.root`. From the
+   moment a run exists, `paths.root` in that run's own `state.json` is the
+   authoritative root for that run — prefer it over re-deriving
+   `AW_OUTPUT_ROOT` yourself, because a run keeps the root it was *created*
+   with even if `output_root` is changed later or a future session's cwd
+   differs.
+3. Wherever this file (or `orchestrator`, or any `step-N` skill) says
+   `input/<run_id>/...`, `interim/<run_id>/...`, or `output/<run_id>/...`,
+   read that as `<root>/input/<run_id>/...` etc.
+4. **Backward compatibility:** a run created before this control existed (or
+   in a session where it was left unset) lives directly under the plain
+   current working directory with no `paths.root` field. When scanning for
+   runs (Phase B, resumability) or resolving `--reuse`, and `AW_OUTPUT_ROOT`
+   differs from the plain cwd, check **both** locations rather than assuming
+   every run lives under the new root.
 
 The argument you were invoked with is:
 
@@ -55,8 +90,10 @@ $ARGUMENTS
    derived by the script; the raw subject is preserved), plus the current
    timestamp.
 
-2. **Allocate the run** by invoking the init script. This is the only thing
-   that creates folders, writes the trigger log, and initializes state:
+2. **Allocate the run** by invoking the init script (with `AW_OUTPUT_ROOT`
+   already exported per *Resolving the run root* above — the script reads it
+   from the environment). This is the only thing that creates folders, writes
+   the trigger log, and initializes state:
 
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/init-run.sh "<raw subject>"
@@ -87,23 +124,28 @@ $ARGUMENTS
    template to:
 
    ```
-   input/<run_id>/scope-template.md
+   <root>/input/<run_id>/scope-template.md
    ```
 
-   (The template's content is authored by the `input-scope-template` task; your
-   job in Phase A is only to ensure a blank copy lands at that exact path so the
-   human has a form to complete.)
+   where `<root>` is this run's `paths.root` from the `state.json` that
+   `init-run.sh` just wrote (§ *Resolving the run root*). (The template's
+   content is authored by the `input-scope-template` task; your job in Phase A
+   is only to ensure a blank copy lands at that exact path so the human has a
+   form to complete.)
 
 4. **Confirm state.** `init-run.sh` has already initialized
-   `interim/<run_id>/state.json` with `status: awaiting-scope`. Verify that is
-   the case; do not advance the status.
+   `<root>/interim/<run_id>/state.json` with `status: awaiting-scope`. Verify
+   that is the case; do not advance the status.
 
 5. **STOP and hand back to the human.** Tell them **exactly**:
    - the run id,
-   - the **full path** of the scope template they must complete
-     (`input/<run_id>/scope-template.md`), noting the two **mandatory** fields
-     (audience / target reader, and purpose / desired takeaway) that will
-     hard-stop resumption if left blank,
+   - the **full, absolute path** of the scope template they must complete
+     (`<root>/input/<run_id>/scope-template.md` — spell out the real `<root>`
+     value, not the placeholder, so they know exactly which folder to open;
+     this matters more than before now that `<root>` may not be their
+     terminal's cwd), noting the two **mandatory** fields (audience / target
+     reader, and purpose / desired takeaway) that will hard-stop resumption if
+     left blank,
    - that they resume with **`/write-article continue`** once it is filled in.
 
    Do **not** proceed to Step 1 or any writing. Phase A ends here.
@@ -117,9 +159,16 @@ $ARGUMENTS
 > which run** when more than one is resumable; and a **blank mandatory scope
 > field hard-stops** it, leaving the run at `awaiting-scope`.
 
-1. **Find resumable runs.** Scan `interim/*/state.json`. A run is **resumable**
-   when its `status` is anything from `awaiting-scope` through an in-progress
-   step (`step-1` … `step-8`) — i.e. **anything except `published`**.
+1. **Find resumable runs.** Scan `<root>/interim/*/state.json` (per §
+   *Resolving the run root* — `<root>` from the resolved `output_root`
+   control). If `<root>` differs from the plain current working directory,
+   **also** scan `interim/*/state.json` there, so runs created before this
+   control was set (or in a session without it) still surface — a run found
+   this way has its own `paths.root` recorded inside it, which is what you
+   use from then on, not the currently-resolved `<root>`. A run is
+   **resumable** when its `status` is anything from `awaiting-scope` through
+   an in-progress step (`step-1` … `step-8`) — i.e. **anything except
+   `published`**.
    - **0 resumable** → tell the user there are no in-progress runs, and suggest
      starting one with `/write-article <subject>`. Stop.
    - **exactly 1 resumable** → select it and continue.
@@ -132,7 +181,9 @@ $ARGUMENTS
    not a scope-only continuation.
 
 3. **If `status` is `awaiting-scope`:** read the completed
-   `input/<run_id>/scope-template.md`.
+   `<root>/input/<run_id>/scope-template.md`, where `<root>` is this run's own
+   `state.json.paths.root` (fall back to the plain current working directory
+   if that field is absent — a pre-`output_root` run).
    - **MANDATORY-FIELD HARD-STOP:** if **either** mandatory field is blank —
      **audience / target reader**, or **purpose / desired takeaway** — do **not**
      proceed, and do **not** guess or fill them in. List **exactly which**
@@ -147,4 +198,6 @@ $ARGUMENTS
    **`orchestrator`** skill, which runs Steps 1–8, manages `state.json`, and
    enforces the gates via the deterministic scripts. Your responsibility is
    **entry and routing only** — you do not execute step logic, mutate gate
-   counters, or decide loop continuation.
+   counters, or decide loop continuation. You do not need to pass the root
+   separately: the orchestrator re-reads `state.json` on entry (as always),
+   and this run's own `paths.root` is already in it.

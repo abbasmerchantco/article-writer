@@ -8,17 +8,24 @@ doc disagree, this doc wins until the doc is updated. Everything here is determi
 
 ---
 
-## 1. Run identity & folders (requirements §3)
+## 1. Run identity & folders (requirements §3, §3.1a)
 
-Run from the **current working directory** (where Claude Code was launched). The plugin
-ensures three top-level folders exist, each with one subfolder per run sharing an
-identical name:
+Run under the **run root** — by default the current working directory (where Claude was
+launched), overridable via the `output_root` control to an absolute, persistent path
+(requirements §3.1a). The plugin ensures three top-level folders exist under that root,
+each with one subfolder per run sharing an identical name:
 
 ```
-input/<run_id>/     # commission / trigger log + scope template
-interim/<run_id>/   # WIP + state.json
-output/<run_id>/    # deliverables (only written on success)
+<root>/input/<run_id>/     # commission / trigger log + scope template
+<root>/interim/<run_id>/   # WIP + state.json
+<root>/output/<run_id>/    # deliverables (only written on success)
 ```
+
+`<root>` is always resolved to an **absolute path** by `init-run.sh` and recorded as
+`paths.root` in that run's `trigger.json` and `state.json` (§4, §5) — every other script
+and skill reads it from there rather than re-deriving `output_root`, so a run stays
+addressable even if a later session's working directory differs or the control is
+changed after the run was created.
 
 **Run id format:** `YYYYMMDD-NNNNN-<slug>`
 Example: `20260715-00003-return-to-office-economics`
@@ -50,30 +57,45 @@ scripts/init-run.sh --reuse <run_id>        # resolve to an existing run, no all
 
 Behaviour:
 
+0. **Resolve the run root** — read `AW_OUTPUT_ROOT` from the environment (the caller
+   exports it from the resolved `output_root` control). Empty/unset → root is the current
+   working directory (original behavior). Non-empty → that path is the root: created via
+   `mkdir -p` if missing, then resolved to an **absolute** path. `--reuse <run_id>` and the
+   slug-dedup scan (step 1) both check this root; if it differs from the plain current
+   working directory they also check the plain cwd, for backward compatibility with runs
+   created before this control existed.
 1. **Slug dedup scan (§3.4)** — before allocating, scan **all** runs across **all dates**
-   (all three top-level folders) for a **slug match** (slug, not exact subject). On match,
-   the script does **not** create anything: it prints one line to stdout and exits 2 so the
-   command layer can ask reuse/new/cancel:
+   (all three top-level folders, under the resolved root) for a **slug match** (slug, not
+   exact subject). On match, the script does **not** create anything: it prints one line to
+   stdout and exits 2 so the command layer can ask reuse/new/cancel:
    ```
    DUPLICATE_MATCH <matched_run_id>
    ```
    `--force-new` skips this scan. `--reuse <run_id>` performs no scan and no allocation.
-2. **Allocate** `YYYYMMDD-NNNNN` per §1, derive slug, assemble `run_id`.
-3. **Create** the `input/<run_id>/`, `interim/<run_id>/`, `output/<run_id>/` triplet.
-4. **Write** `input/<run_id>/trigger.json` (the trigger log, §5 below).
-5. **Initialize** `interim/<run_id>/state.json` (schema §4) with `status: awaiting-scope`.
+2. **Allocate** `YYYYMMDD-NNNNN` per §1, derive slug, assemble `run_id`. Sequence
+   allocation scans only under the resolved root (a custom `output_root` starts its own
+   `00001` sequence, independent of any legacy runs under a plain cwd).
+3. **Create** the `<root>/input/<run_id>/`, `<root>/interim/<run_id>/`,
+   `<root>/output/<run_id>/` triplet.
+4. **Write** `<root>/input/<run_id>/trigger.json` (the trigger log, §5 below), including
+   `paths.root` (the resolved absolute root) and `controls.output_root` (same value).
+5. **Initialize** `<root>/interim/<run_id>/state.json` (schema §4) with
+   `status: awaiting-scope`, including `paths.root`.
 6. **Print**, on success, exactly one line to stdout:
    ```
    RUN <run_id>
    ```
-   and exit 0. All diagnostics go to stderr.
+   and exit 0. All diagnostics go to stderr. (The resolved root is not printed separately —
+   the caller either already knows it, because it set `AW_OUTPUT_ROOT`, or can read
+   `paths.root` from the `state.json` this call just wrote.)
 
 **Exit codes:** `0` success · `2` duplicate slug (nothing created) · `1` usage/other error.
 
 **Controls:** defaults live in the manifest `userConfig`; `init-run.sh` accepts the
 resolved control set via env vars prefixed `AW_` (e.g. `AW_PER_GATE_CAP=3`,
-`AW_ADVERSARIAL_CAP=5`, `AW_AUDIENCE=...`). Any unset control falls back to the §4
-default. The full resolved control set is recorded in both `trigger.json` and `state.json`.
+`AW_ADVERSARIAL_CAP=5`, `AW_AUDIENCE=...`, `AW_OUTPUT_ROOT=...`). Any unset control falls
+back to the §4 default. The full resolved control set is recorded in both `trigger.json`
+and `state.json`.
 
 ---
 
@@ -120,7 +142,8 @@ All counter mutations write `state.json` atomically (write temp file, then move)
 
 ## 4. `state.json` schema (requirements §8) — P1-T2
 
-Lives at `interim/<run_id>/state.json`. Initialized by `init-run.sh`, thereafter read on
+Lives at `<root>/interim/<run_id>/state.json`, where `<root>` is this same run's
+`paths.root` below (requirements §3.1a). Initialized by `init-run.sh`, thereafter read on
 every step entry and written on every step exit. Counters mutated **only** by
 `gate-counter.sh`.
 
@@ -137,6 +160,8 @@ every step entry and written on every step exit. Counters mutated **only** by
 
   "status": "awaiting-scope",
 
+  "paths": { "root": "/absolute/path/to/runs-root" },
+
   "scope": {
     "template_completed": false,
     "missing_mandatory": ["audience", "purpose"],
@@ -144,6 +169,7 @@ every step entry and written on every step exit. Counters mutated **only** by
   },
 
   "controls": {
+    "output_root": "/absolute/path/to/runs-root",
     "audience": "general informed reader",
     "angle": "auto",
     "length": "medium",
@@ -192,6 +218,13 @@ every step entry and written on every step exit. Counters mutated **only** by
 ```
 
 **Field notes:**
+- `paths.root` (requirements §3.1a): the absolute directory under which this run's
+  `input/<run_id>/`, `interim/<run_id>/`, `output/<run_id>/` all live. Set once by
+  `init-run.sh` at creation and never changed afterward — every script/skill that resumes
+  or references this run reads it from here rather than re-deriving the currently-active
+  `output_root` control, so a run stays addressable even if that control changes later or
+  a later session's working directory differs. Absent on runs created before this field
+  existed; treat that as "root = the current working directory."
 - `status`: `awaiting-scope` → `step-1` … `step-8` → `published`. Used by
   `/write-article continue` for resumability and run selection (requirements §3.6, §8).
   A run is *resumable* when status is anything from `awaiting-scope` through in-progress
@@ -246,8 +279,8 @@ every step entry and written on every step exit. Counters mutated **only** by
 
 ## 5. `trigger.json` — trigger log (requirements §2.1, §3.5)
 
-Lives at `input/<run_id>/trigger.json`. Written once by `init-run.sh`, never mutated.
-The immutable "record of intent".
+Lives at `<root>/input/<run_id>/trigger.json` (`<root>` = this same run's `paths.root`).
+Written once by `init-run.sh`, never mutated. The immutable "record of intent".
 
 ```json
 {
@@ -255,7 +288,8 @@ The immutable "record of intent".
   "raw_subject": "The economics of return-to-office mandates",
   "slug": "return-to-office-economics",
   "timestamp": "2026-07-15T18:11:00Z",
-  "controls": { "...": "the full resolved control set, same shape as state.controls" }
+  "controls": { "...": "the full resolved control set, same shape as state.controls" },
+  "paths": { "root": "/absolute/path/to/runs-root" }
 }
 ```
 
@@ -303,4 +337,20 @@ Always exits 0 (it informs the model; it does not gate). Prints JSON to stdout.
 Self-contained: python3, no jq, **no network** (requirements §11), bash 3.2. Loop control
 stays with the Step 5 gate (`gate-counter.sh step-5`) — this script only reports
 resolved/unresolved, consistent with the deterministic/probabilistic split.
+
+---
+
+## 8. `make-manifest.sh` interface (requirements §2.2, §3.1a)
+
+```
+scripts/make-manifest.sh <run_id> [root_dir]
+```
+
+`root_dir` is this run's resolved root (`state.json.paths.root`) — the base under which
+`interim/<run_id>/` and `output/<run_id>/` live. Defaults to `.` (current working
+directory) when omitted, matching the original single-argument signature so pre-existing
+callers and tests are unaffected. The orchestrator, which already read `state.json` to
+reach the publish stage, always has `paths.root` on hand and passes it explicitly rather
+than relying on the default. Self-guards on `status` exactly as before (§ README);
+adding `root_dir` does not change the publish-stage check, only where it looks.
 ```

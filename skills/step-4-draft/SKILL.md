@@ -1,6 +1,6 @@
 ---
 name: step-4-draft
-description: Step 4 of the article-writer workflow — Draft fast and ugly, separating generation from judgment. Silences the editor (no rereading or polishing this pass), follows the outline but lets it flex, drops [check stat] placeholders instead of stopping to look things up, skips hard parts and returns, and reaches the end at all costs. Writes the complete rough draft to interim/<run_id>/draft.md and registers every placeholder in state.placeholders[] with resolved=false. Its exit gate checks COMPLETENESS ONLY (did you reach the end, are placeholders still visibly marked) — deliberately not a quality gate — via gate-counter.sh. Use when a run is at current_step 3 (Step 3 passed) and /write-article continue is resuming it.
+description: Step 4 of the article-writer workflow — Draft fast and ugly, separating generation from judgment. Silences the editor (no rereading or polishing this pass), follows the outline but lets it flex, drops [check stat] placeholders instead of stopping to look things up, skips hard parts and returns, and reaches the end at all costs. Writes the complete rough draft to interim/{run_id}/draft.md and registers every placeholder in `state.placeholders` with resolved=false. Its exit gate checks COMPLETENESS ONLY (did you reach the end, are placeholders still visibly marked) — deliberately not a quality gate — via gate-counter.sh. Use when a run is at current_step 3 (Step 3 passed) and /write-article continue is resuming it.
 allowed-tools: Read, Edit, Bash
 ---
 
@@ -15,8 +15,14 @@ failure.
 
 ## Entry precondition
 
+**Root note:** every `input/`, `interim/`, `output/` path in this skill is relative to
+this run's root `<root>` (its `state.json.paths.root`, or the current working directory
+for a pre-`output_root` run) — the orchestrator that dispatched you already resolved it
+to find this run; use that same value. See `commands/write-article.md` § *Resolving the
+run root*.
+
 - Step 3 has passed: the outline with claim→evidence mapping exists in
-  `interim/<run_id>/state.json` and the hypothesis has hardened into a settled thesis
+  `<root>/interim/<run_id>/state.json` and the hypothesis has hardened into a settled thesis
   (`hypothesis.hardened_to_thesis = true`).
 - The run is at `current_step: 3` (i.e. Step 3 complete, Step 4 next), status advancing
   toward Step 4.
