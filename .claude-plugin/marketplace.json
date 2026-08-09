@@ -2,7 +2,7 @@
   "name": "article-writer",
   "description": "Marketplace hosting the article-writer plugin.",
   "owner": {
-    "name": "Abbas Merchant"
+    "name": "Uttakarsh Tikku"
   },
   "plugins": [
     {

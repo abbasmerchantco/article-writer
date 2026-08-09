@@ -5,6 +5,42 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-08-09
+
+### Changed
+- **Marketplace location is now GitHub.** `plugin.json` gained `repository`/`homepage`
+  pointing at `https://github.com/utikku1993/article-writer`. README installation
+  instructions replaced the `<your-github-user>/ArticleWriter` placeholder with the real
+  `utikku1993/article-writer`, and now cover switching an existing local-marketplace
+  install over to the GitHub source (`/plugin marketplace remove article-writer` then
+  re-add from GitHub) without affecting any run's `input`/`interim`/`output` folders,
+  which live under `output_root`/the working directory — never inside the plugin's own
+  install path — so they are untouched by where the plugin itself is installed from.
+
+## [0.4.1] — 2026-08-09
+
+### Fixed
+- **`output_root` was never actually reaching `init-run.sh` — runs kept landing under
+  whatever the ambient working directory was (e.g. an ephemeral session scratchpad),
+  not the configured OneDrive path.** Root cause: `commands/write-article.md` told
+  Claude to "read the `output_root` control... however your run's control overrides
+  are supplied" — a placeholder instruction with no real mechanism behind it, so
+  `AW_OUTPUT_ROOT` was never actually exported and `init-run.sh` silently fell back to
+  its documented cwd default. The real mechanism (confirmed against the current Claude
+  Code plugin reference) is that non-sensitive `userConfig` values are substituted
+  directly into skill/command markdown content as `${user_config.KEY}` before Claude
+  ever reads the file — there is no separate runtime lookup to perform.
+  `commands/write-article.md` § *Resolving the run root* now embeds the literal
+  `${user_config.output_root}` token so Claude Code performs that substitution, and
+  explicitly guards against passing the unsubstituted placeholder string through if
+  something upstream is too old to substitute it. (Note this only applies to
+  `commands/*.md` and `skills/*/SKILL.md` content — `CLAUDE_PLUGIN_OPTION_<KEY>`
+  environment-variable auto-injection is a separate mechanism that only reaches
+  registered **hooks**, e.g. `gate-guard.sh`, not arbitrary Bash calls a skill makes
+  mid-instruction; `gate-guard.sh` doesn't need `output_root` anyway, so it was
+  unaffected by this bug.) No script changed — `init-run.sh`'s `AW_OUTPUT_ROOT` handling
+  from 0.4.0 was already correct; only the thing that was supposed to set it was broken.
+
 ## [0.4.0] — 2026-08-09
 
 ### Added

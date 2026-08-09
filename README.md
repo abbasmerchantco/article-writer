@@ -144,15 +144,25 @@ manifest flags this). It is a plagiarism *defense*, not a certified originality 
 **Requirements:** Claude Code, `bash`, `python3`. Optional: `pandoc` or `python-docx` for
 `.docx` output (without either, the run keeps `article.md` and says so).
 
-From this repository:
+From GitHub (the canonical marketplace location):
 
 ```
-/plugin marketplace add <your-github-user>/ArticleWriter
+/plugin marketplace add utikku1993/article-writer
 /plugin install article-writer@article-writer
 ```
 
-For local development, clone the repo, then run `/plugin`, add the folder as a local
-marketplace source, and enable `article-writer`.
+Already have it installed from a local marketplace source instead? Point it at GitHub
+without losing your run history: `/plugin marketplace remove article-writer` (the old
+local source), then run the two commands above. Runs live under `output_root`/the
+working directory, not inside the plugin's own install path, so switching marketplace
+sources doesn't touch them.
+
+To pick up new commits after the initial install, run `/plugin marketplace update
+article-writer` followed by `/reload-plugins` (or restart Claude Code) — same as any
+other update.
+
+For local development instead, clone the repo, then run `/plugin`, add the folder as a
+local marketplace source, and enable `article-writer`.
 
 ## Contributing
 

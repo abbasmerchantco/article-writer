@@ -1,0 +1,13 @@
+# Force LF line endings for everything this repo actually executes or diffs
+# as text, regardless of a contributor's core.autocrlf setting. Without this,
+# a Windows checkout with the common core.autocrlf=true default silently
+# converts scripts/*.sh and tests/*.sh to CRLF, which bash then fails to
+# parse (e.g. "syntax error near unexpected token `$'{\r''"). Every script in
+# this repo is a `#!/usr/bin/env bash` file, so CRLF is not cosmetic here —
+# it breaks the plugin outright.
+* text=auto eol=lf
+
+*.sh text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.html text eol=lf

@@ -35,15 +35,29 @@ Do this **once, first**, before Phase A or Phase B — every path in this file
 and in the skills it hands off to is relative to the resolved root, not
 blindly to wherever Claude happens to be running from.
 
-1. Read the plugin's `output_root` control (from `userConfig`, or however
-   your run's control overrides are supplied). If it is set (non-blank),
-   that is the **requested root** — an absolute path such as a OneDrive-
-   synced folder. If it is blank/unset, the root is the current working
-   directory (original behavior; nothing else below changes).
-2. Export it so every script invocation resolves the same way:
+1. This plugin's configured `output_root` value is:
    ```
-   export AW_OUTPUT_ROOT="<the requested root, or empty if unset>"
+   ${user_config.output_root}
    ```
+   Claude Code substitutes the real configured value (or its manifest default) into
+   that line **before you ever see this file** — by the time you read this, it is a
+   literal string (e.g. an absolute OneDrive path), not a template. Do not try to
+   "look up" `output_root` some other way (there is no separate lookup — this
+   substitution *is* the mechanism, per the userConfig contract: non-sensitive
+   `userConfig` values are substituted directly into skill/command content). If what
+   you see above is still the literal text `${user_config.output_root}` with the
+   braces intact, substitution did not happen (e.g. a very old Claude Code build) —
+   treat it as blank/unset and fall back to the current working directory rather than
+   passing the literal placeholder string anywhere.
+2. Export the value you just read so every script invocation resolves the same way
+   (substitute the ACTUAL string from step 1 for `<value>` — do not paste the literal
+   token `${user_config.output_root}` into a shell command; either it was already
+   substituted into a real path in step 1, or it wasn't and you're using the cwd
+   fallback):
+   ```
+   export AW_OUTPUT_ROOT="<value>"
+   ```
+   (blank/unset → `export AW_OUTPUT_ROOT=""`, which `init-run.sh` treats as "use cwd").
    `init-run.sh` treats an empty value as "use cwd," creates the directory if
    it does not exist, and always resolves it to an **absolute** path — which
    it then records in `trigger.json`/`state.json` as `paths.root`. From the

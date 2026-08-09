@@ -113,6 +113,20 @@ directory differs — every component that resumes or references an existing run
 root. A run created before this control existed has no `paths.root` field; treat that as
 "this run's root is the current working directory" for backward compatibility.
 
+**Mechanism (how a control value actually reaches a skill):** non-sensitive `userConfig`
+values are substituted directly into skill/command markdown content as `${user_config.KEY}`
+by Claude Code before the content is ever read — there is no separate env-var lookup a
+skill can perform instead. Only `commands/write-article.md` needs this (the one place a
+run's root is resolved *fresh*, from the raw control, before any run/state exists);
+`skills/orchestrator` and every `skills/step-N-*` instead read the already-created run's
+`paths.root`, so they never need to touch `${user_config.output_root}` directly. Note this
+is distinct from `CLAUDE_PLUGIN_OPTION_<KEY>` environment variables, which Claude Code
+auto-injects only into registered **hook** processes (e.g. `gate-guard.sh`), not into
+arbitrary shell commands a skill runs mid-instruction — this plugin's other scripts
+(`init-run.sh`, `make-manifest.sh`, etc.) are invoked the second way, so they receive the
+resolved value only because the calling skill explicitly exports it as `AW_OUTPUT_ROOT`
+after reading the substituted `${user_config.output_root}` text.
+
 ### 3.2 Run identifier and folder naming
 Each run gets one identifier used as the **shared folder name across all three** top-level folders:
 

@@ -2,15 +2,24 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "article-writer",
   "displayName": "Article Writer",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Turn a one-line subject into a publish-ready article via an 8-step, gated workflow with deterministic loop caps, a Step-5 plagiarism/attribution pass, and an adversarial fact-check review.",
   "author": {
-    "name": "Abbas Merchant"
+    "name": "Uttakarsh Tikku"
   },
+  "repository": "https://github.com/utikku1993/article-writer",
+  "homepage": "https://github.com/utikku1993/article-writer",
   "license": "MIT",
   "keywords": ["writing", "articles", "content", "research", "fact-check", "workflow"],
   "defaultEnabled": true,
   "userConfig": {
+    "output_root": {
+      "type": "string",
+      "title": "Runs root directory (optional)",
+      "description": "Absolute path to a persistent directory where article-writer stores every run's input/interim/output folders, instead of the current working directory. Set this when Claude is launched from a temporary or sandboxed session directory (e.g. Cowork) that can disappear or become inaccessible \u2014 point it at a durable, synced location such as a OneDrive folder. Use forward slashes (e.g. C:/Users/you/OneDrive/ArticleWriterRuns) since the enforcement scripts run under bash. Leave blank to use the current working directory (original behavior). The directory is created if it does not already exist.",
+      "required": false,
+      "default": "C:/Users/abbzt/OneDrive/ArticleWriterRuns"
+    },
     "audience": {
       "type": "string",
       "title": "Target reader / audience",
