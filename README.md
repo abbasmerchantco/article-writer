@@ -147,7 +147,7 @@ manifest flags this). It is a plagiarism *defense*, not a certified originality 
 From GitHub (the canonical marketplace location):
 
 ```
-/plugin marketplace add utikku1993/article-writer
+/plugin marketplace add abbasmerchantco/article-writer
 /plugin install article-writer@article-writer
 ```
 

@@ -5,6 +5,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.3] — 2026-08-09
+
+### Fixed
+- **`repository`/`homepage` in `plugin.json` and the README install command pointed at
+  the wrong GitHub repo.** 0.4.2 set them to `utikku1993/article-writer` — the original
+  upstream author's repo — instead of `abbasmerchantco/article-writer`, the fork this
+  plugin is actually developed, committed, and pushed to. Corrected both.
+
 ## [0.4.2] — 2026-08-09
 
 ### Changed
