@@ -41,6 +41,16 @@ die() {
   exit "${2:-1}"
 }
 
+# Resolve a python3 interpreter (Windows may only expose python.exe/py.exe, not a
+# python3 alias) and force UTF-8 I/O so non-ASCII characters in state.json survive
+# read/write round-trips instead of being mangled by the system locale codepage.
+if command -v python3 >/dev/null 2>&1; then PY3=python3
+elif command -v python >/dev/null 2>&1; then PY3=python
+elif command -v py >/dev/null 2>&1; then PY3="py -3"
+else die "no python3 interpreter found on PATH (tried python3, python, py -3)" 1
+fi
+export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
+
 if [ "$#" -ne 3 ]; then
   usage
   exit 1
@@ -75,7 +85,7 @@ CAP_ENV="${AW_PER_GATE_CAP:-}"
 #   exit 0  -> normal (get/pass/RETRY)
 #   exit 3  -> escalation
 #   exit 1  -> invalid state JSON / other python-side error
-python3 - "$STATE_PATH" "$GATE" "$ACTION" "$CAP_ENV" <<'PY'
+$PY3 - "$STATE_PATH" "$GATE" "$ACTION" "$CAP_ENV" <<'PY'
 import json, os, sys, tempfile
 from datetime import datetime, timezone
 

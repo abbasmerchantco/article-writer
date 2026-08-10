@@ -17,6 +17,16 @@ die() { echo "to-docx.sh: $1" >&2; exit "${2:-1}"; }
 IN="$1"; OUT="$2"
 [ -f "$IN" ] || die "input not found: $IN" 1
 
+# Resolve a python3 interpreter (Windows may only expose python.exe/py.exe, not a
+# python3 alias) for the fallback path below, and force UTF-8 I/O so non-ASCII
+# characters in the article survive the conversion.
+if command -v python3 >/dev/null 2>&1; then PY3=python3
+elif command -v python >/dev/null 2>&1; then PY3=python
+elif command -v py >/dev/null 2>&1; then PY3="py -3"
+else PY3=""
+fi
+export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
+
 # 1. pandoc
 if command -v pandoc >/dev/null 2>&1; then
   if pandoc "$IN" -f markdown -t docx -o "$OUT" 2>/dev/null; then
@@ -25,8 +35,8 @@ if command -v pandoc >/dev/null 2>&1; then
 fi
 
 # 2. python-docx fallback (minimal but correct Markdown subset)
-if python3 -c "import docx" >/dev/null 2>&1; then
-  python3 - "$IN" "$OUT" <<'PY'
+if [ -n "$PY3" ] && $PY3 -c "import docx" >/dev/null 2>&1; then
+  $PY3 - "$IN" "$OUT" <<'PY'
 import re, sys
 from docx import Document
 

@@ -17,7 +17,21 @@ set -uo pipefail
 
 INPUT="$(cat)"
 
-python3 - "$INPUT" <<'PY'
+# Resolve a python3 interpreter (Windows may only expose python.exe/py.exe, not a python3
+# alias). This guard's whole job is to fail SAFE, so if no interpreter is even available
+# to evaluate the request, deny by default rather than silently falling through to allow.
+if command -v python3 >/dev/null 2>&1; then PY3=python3
+elif command -v python >/dev/null 2>&1; then PY3=python
+elif command -v py >/dev/null 2>&1; then PY3="py -3"
+else
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"gate-guard.sh: no python3 interpreter found on PATH (tried python3, python, py -3); failing safe (deny)."}}'
+  exit 0
+fi
+# Force UTF-8 I/O so non-ASCII characters in state.json are read correctly rather than
+# mangled by the system locale codepage.
+export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
+
+$PY3 - "$INPUT" <<'PY'
 import json, os, re, sys
 
 raw = sys.argv[1] if len(sys.argv) > 1 else ""

@@ -47,6 +47,16 @@
 set -euo pipefail
 die() { echo "originality-check.sh: $1" >&2; exit "${2:-1}"; }
 
+# Resolve a python3 interpreter (Windows may only expose python.exe/py.exe, not a
+# python3 alias) and force UTF-8 I/O so non-ASCII characters in state.json/the draft
+# survive read round-trips instead of being mangled by the system locale codepage.
+if command -v python3 >/dev/null 2>&1; then PY3=python3
+elif command -v python >/dev/null 2>&1; then PY3=python
+elif command -v py >/dev/null 2>&1; then PY3="py -3"
+else die "no python3 interpreter found on PATH (tried python3, python, py -3)" 1
+fi
+export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
+
 [ "$#" -ge 2 ] || die "usage: originality-check.sh <state_path> <draft_path> [verify|scan]" 1
 STATE_PATH="$1"
 DRAFT_PATH="$2"
@@ -57,7 +67,7 @@ case "$ACTION" in verify|scan) ;; *) die "unknown action '$ACTION' (expected ver
 
 NGRAM_ENV="${AW_PLAGIARISM_NGRAM:-}"
 
-python3 - "$STATE_PATH" "$DRAFT_PATH" "$ACTION" "$NGRAM_ENV" <<'PY'
+$PY3 - "$STATE_PATH" "$DRAFT_PATH" "$ACTION" "$NGRAM_ENV" <<'PY'
 import json, re, sys
 
 state_path, draft_path, action, ngram_env = sys.argv[1:5]

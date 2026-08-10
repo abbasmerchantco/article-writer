@@ -24,6 +24,19 @@ set -euo pipefail
 err() { printf '%s\n' "$*" >&2; }
 die() { err "$@"; exit 1; }
 
+# Resolve a python3 interpreter - some Windows installs only expose python.exe/py.exe on
+# PATH, not a python3 alias, which previously caused a hard, confusing exit-127 failure
+# right at run creation. Also force UTF-8 everywhere python3 runs below, so em-dashes and
+# other non-ASCII characters in trigger.json/state.json survive the write, instead of
+# being mangled by Python defaulting text-mode I/O to the system locale codepage (cp1252
+# on Windows) when no encoding is specified.
+if command -v python3 >/dev/null 2>&1; then PY3=python3
+elif command -v python >/dev/null 2>&1; then PY3=python
+elif command -v py >/dev/null 2>&1; then PY3="py -3"
+else die "no python3 interpreter found on PATH (tried python3, python, py -3)"
+fi
+export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
+
 usage() {
   err "usage: init-run.sh <subject...>"
   err "       init-run.sh --force-new <subject...>"
@@ -247,7 +260,7 @@ export AW_RUN_ID="$RUN_ID" AW_DATE="$DATE" AW_SEQ="$SEQ" AW_SLUG="$SLUG" \
   AW_C_PLAGIARISM_NGRAM="$PLAGIARISM_NGRAM" AW_C_POST_CATEGORY="$POST_CATEGORY" \
   AW_C_RESEARCH_MODE="$RESEARCH_MODE"
 
-python3 - <<'PY'
+$PY3 - <<'PY'
 import json, os, sys, tempfile
 
 def as_int(name):

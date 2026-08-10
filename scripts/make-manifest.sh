@@ -28,6 +28,19 @@
 set -euo pipefail
 
 die() { echo "make-manifest.sh: $1" >&2; exit "${2:-1}"; }
+
+# Resolve a python3 interpreter (Windows may only expose python.exe/py.exe, not a
+# python3 alias) and force UTF-8 I/O everywhere below, so non-ASCII characters already in
+# state.json (em-dashes, curly quotes) AND characters this script itself writes (e.g. the
+# warning emoji in manifest.md) survive instead of crashing or mangling on the system
+# locale codepage.
+if command -v python3 >/dev/null 2>&1; then PY3=python3
+elif command -v python >/dev/null 2>&1; then PY3=python
+elif command -v py >/dev/null 2>&1; then PY3="py -3"
+else die "no python3 interpreter found on PATH (tried python3, python, py -3)" 1
+fi
+export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
+
 [ "$#" -eq 1 ] || [ "$#" -eq 2 ] || die "usage: make-manifest.sh <run_id> [root_dir]" 1
 RUN="$1"
 ROOT_DIR="${2:-.}"
@@ -37,7 +50,7 @@ OUTDIR="$ROOT_DIR/output/$RUN"
 [ -f "$STATE" ] || die "state file not found: $STATE" 1
 [ -d "$OUTDIR" ] || die "output dir not found: $OUTDIR" 1
 
-python3 - "$STATE" "$DRAFT" "$OUTDIR" "$RUN" <<'PY'
+$PY3 - "$STATE" "$DRAFT" "$OUTDIR" "$RUN" <<'PY'
 import json, os, sys, shutil
 from datetime import datetime, timezone
 
@@ -73,7 +86,14 @@ with open(os.path.join(outdir, "sources.md"), "w") as f:
 adv = state.get("adversarial", {}) or {}
 rounds = adv.get("rounds", 0)
 ledger = adv.get("ledger", []) or []
-guarantee = adv.get("verification_guarantee", "internal-consistency-only")
+_rigor_tier_early = (state.get("controls", {}) or {}).get("rigor_tier")
+if _rigor_tier_early == "reflective" and rounds == 0 and not adv.get("verification_guarantee"):
+    # Step 8 was skipped BY DESIGN for this tier (requirements §2.4a) - a different,
+    # honest claim from "attempted, source access unavailable". Never let this collapse
+    # into the internal-consistency-only default, which would misstate why 0 rounds ran.
+    guarantee = "skipped-reflective-tier"
+else:
+    guarantee = adv.get("verification_guarantee", "internal-consistency-only")
 n_unresolved = sum(1 for i in ledger if isinstance(i, dict)
                    and i.get("verdict") in ("wrong", "misrepresented", "unsupported"))
 verdict = "clean-review" if n_unresolved == 0 else "published-with-unresolved"
@@ -130,10 +150,16 @@ with open(os.path.join(outdir, "manifest.json"), "w") as f:
     json.dump(manifest, f, indent=2); f.write("\n")
 
 # --- human-readable manifest.md ---
-guar_txt = ("Independent re-sourcing was available — **external truth** was checked."
-            if guarantee == "external-truth" else
-            "Independent source access was NOT available — only **internal consistency** "
-            "was checked. This run does NOT constitute external fact verification.")
+if guarantee == "external-truth":
+    guar_txt = "Independent re-sourcing was available — **external truth** was checked."
+elif guarantee == "skipped-reflective-tier":
+    guar_txt = ("Step 8 adversarial review was **skipped BY DESIGN** for this "
+                "reflective/personal post — there were no externally-checkable claims to "
+                "independently verify. This is a deliberate choice for this post_category, "
+                "**not** the same statement as source access being unavailable.")
+else:
+    guar_txt = ("Independent source access was NOT available — only **internal consistency** "
+                "was checked. This run does NOT constitute external fact verification.")
 tier_txt = (
     "**%s** (post_category: %s, research_mode: %s) — " % (rigor_tier, post_category, research_mode) +
     ("no external research or fact-checking was attempted for this run; it was skipped "
@@ -202,7 +228,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Read both controls in one pass, one value per line. The state path is passed via argv
 # and never interpolated into the python source — a path containing a quote must not be
 # able to inject code (this matches the argv pattern every other script here uses).
-CONTROLS="$(python3 - "$STATE" <<'PY'
+CONTROLS="$($PY3 - "$STATE" <<'PY'
 import json, sys
 c = json.load(open(sys.argv[1])).get("controls") or {}
 print(c.get("citation_style") or "apa")

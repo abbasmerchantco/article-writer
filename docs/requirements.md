@@ -92,11 +92,11 @@ no claims to source.
 `post_category` is resolved once, at Step 1 (§4 Step 1), from a fixed list — never
 guessed, never silently defaulted to the heaviest tier without asking:
 
-| `post_category` | `rigor_tier` | Step 2 behavior | Step 8 adversarial cap |
+| `post_category` | `rigor_tier` | Step 2 behavior | Step 8 behavior |
 |---|---|---|---|
-| `musings`, `photos`, `travel` | `reflective` | Skipped — a personal-context capture pass instead of research; nothing here is an externally-checkable claim | 1 (will virtually always stop clean on round 1 — there is nothing to fact-check) |
-| `learnings`, `movies`, `books`, `mba` | `light-check` | Trimmed to spot-checking only the handful of hard, named facts the piece states (e.g. a film's year/director) — no territory-mapping, no counter-evidence hunting, no multi-source triangulation | 2 |
-| `deep-dive` (or unrecognized/unset) | `journalistic` | Unchanged — the full subprocess in §4 Step 2 | whatever `controls.adversarial_cap` is already configured to (default 3) |
+| `musings`, `photos`, `travel` | `reflective` | Skipped — a personal-context capture pass instead of research; nothing here is an externally-checkable claim | **Skipped entirely** — the orchestrator never dispatches the adversarial-reviewer agent or calls `review-loop.sh`; there is nothing to fact-check in a personal account, so the gate has no work to do |
+| `learnings`, `movies`, `books`, `mba` | `light-check` | Trimmed to spot-checking only the handful of hard, named facts the piece states (e.g. a film's year/director) — no territory-mapping, no counter-evidence hunting, no multi-source triangulation | Runs, cap 2, but the reviewer only attacks that same class of hard named facts (not the author's opinions) and accepts a single admissible source as sufficient — it does not hold the piece to a higher bar than Step 2 was asked to meet |
+| `deep-dive` (or unrecognized/unset) | `journalistic` | Unchanged — the full subprocess in §4 Step 2 | Unchanged — full scrutiny, multiple independent confirmations for load-bearing claims, whatever `controls.adversarial_cap` is already configured to (default 3) |
 
 A run's `post_category`/`rigor_tier`/`research_mode` are recorded in `state.controls`
 and surfaced in the manifest (§2.2), and the manifest is explicit that a `reflective`
@@ -316,7 +316,11 @@ Specified separately from behavior because these must be **enforced by hooks/scr
 - Gates must stay lightweight (a single fast question), so they act as tripwires, not mini-reviews. Step 8 is the one heavyweight gate.
 
 ### 5.2 Adversarial loop (Step 8)
-- **min 1** review always runs; **max 5** (control-configurable).
+- **min 1** review always runs for `light-check`/`journalistic` runs; **max 3**
+  (softened from 5, control-configurable). **Exception:** a `reflective`-tier run
+  (`post_category` musings/photos/travel, §2.4a) skips Step 8 entirely — the min-1 floor
+  does not apply, because there is nothing externally-checkable to review. This is a
+  deliberate design choice, recorded honestly in the manifest, not a degradation.
 - Early-stop condition: a review finds **nothing substantive** left to attack. Cosmetic nitpicks do **not** count as a reason to loop — only substantive weaknesses do.
 - **Severity-based routing**, driven by the fact-check verdict, each returning to a different step then re-entering the gate:
 
@@ -459,7 +463,9 @@ A blank **mandatory** scope field (audience or purpose) causes `continue` to **h
 
 ## 11. Non-functional & safety
 
-- **Bounded everywhere:** no unbounded loops — every gate is capped (per-gate 3, adversarial 5). This is the whole reason caps are enforced deterministically.
+- **Bounded everywhere:** no unbounded loops — every gate is capped (per-gate 2;
+  adversarial 3 for `journalistic`, 2 for `light-check`, and Step 8 skipped entirely
+  for `reflective` — §2.4a). This is the whole reason caps are enforced deterministically.
 - **Trust note:** plugin hooks and scripts run real code on the user's machine at the same trust level as the shell. The plugin should ship with reviewable scripts and no hidden network calls beyond the declared source-access capability.
 - **Honest scope limits:** the plugin can only verify *external truth* where it has independent source access; otherwise it must clearly report that it checked only internal consistency, and must not imply fact-checking it did not perform.
 - **Auditability:** the `input/` commission plus the `output/` manifest together make every run reconstructable after the fact.

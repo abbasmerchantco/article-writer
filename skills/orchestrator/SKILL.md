@@ -103,15 +103,32 @@ human exactly what is blocked, and leave `status` where `continue` can resume it
 
 ## Step 8 — adversarial review (delegated agent + deterministic loop)
 
-When status reaches `step-7` (Step 7 complete), set `status: step-8` and run the
-adversarial loop. **You produce no judgement here and you count nothing** — the
-`adversarial-reviewer` agent judges; `review-loop.sh` controls the loop. Each round:
+When status reaches `step-7` (Step 7 complete), set `status: step-8`.
+
+**Reflective tier skips this step entirely (requirements §2.4a).** Read
+`controls.rigor_tier` first. If it is `reflective` (post_category musings / photos /
+travel), do **not** dispatch the `adversarial-reviewer` agent and do **not** call
+`review-loop.sh` — there is nothing externally-checkable in a personal account, so the
+independent-fact-check gate has no work to do. `state.adversarial` is already `{rounds:
+0, ledger: []}` from `init-run.sh` and needs no further write. Go straight to *Publish*
+(step 4 below) with `status: step-8`. This is a deliberate design choice, not a
+degradation — `make-manifest.sh` records it honestly as "skipped by design," distinct
+from "attempted, source access unavailable" (§2.5, §11).
+
+For every other tier (`light-check`, `journalistic`, or an unresolved/legacy run with no
+`rigor_tier`), run the adversarial loop as follows. **You produce no judgement here and
+you count nothing** — the `adversarial-reviewer` agent judges; `review-loop.sh` controls
+the loop. Each round:
 
 1. **Dispatch the `adversarial-reviewer` agent** (isolated context) via the Task tool.
    Tell it the run id, the **resolved `<root>`** (it is isolated and starts with no
-   context, so it cannot re-derive this itself — pass the literal absolute path), and the
-   round number `N`. It re-derives and re-sources claims independently (it must NOT read
-   the author's Step 2 citations) and writes its classified ledger to
+   context, so it cannot re-derive this itself — pass the literal absolute path), the
+   round number `N`, and **`controls.rigor_tier`** (`light-check` or `journalistic`) —
+   it scales how broadly it attacks the draft and how many confirmations it demands per
+   the tier (see `agents/adversarial-reviewer.md` § *Scale scrutiny to rigor_tier*); never
+   let it default to full journalistic scrutiny on a light-check run just because you
+   forgot to pass the tier. It re-derives and re-sources claims independently (it must NOT
+   read the author's Step 2 citations) and writes its classified ledger to
    `<root>/interim/<run_id>/review-round-<N>.json` (schema: `{round,
    verification_guarantee, ledger[]}`). You do not review the article yourself.
 

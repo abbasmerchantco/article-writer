@@ -67,6 +67,36 @@ you need in the task prompt.)
 
 ---
 
+## Scale scrutiny to `rigor_tier`
+
+The orchestrator tells you this run's `controls.rigor_tier` alongside the run id, round
+number, and root (requirements §2.4a). This is not optional context — attacking a
+`light-check` post (a movie review, a book reflection, an MBA note) at full journalistic
+intensity would defeat the entire point of that tier existing, and would hold Step 8 to a
+stricter bar than Step 2 was ever asked to meet for the same piece. You will only ever be
+dispatched for `light-check` or `journalistic` — the orchestrator skips Step 8 entirely
+for `reflective` posts (musings/photos/travel), so you will never see one of those.
+
+- **`rigor_tier: "journalistic"`** — everything below applies exactly as written. Full
+  scrutiny, multiple independent confirmations for load-bearing claims, attack
+  everything checkable.
+- **`rigor_tier: "light-check"`** — the piece is someone's opinion/experience of a film,
+  book, technique, or course, carrying a small number of hard, named facts (a release
+  year, a director, an author, a course/case name) alongside genuine opinion, which is
+  **not** a claim to verify. Narrow what you attack accordingly:
+  - Extract and check only the same class of hard, named facts Step 2 would have
+    spot-checked — not every incidental factual-sounding sentence, and never the
+    author's evaluative/opinion statements ("the pacing drags in the second act" is not
+    a checkable claim).
+  - **One admissible independent source is enough** to call a fact `verified`, even if
+    it is `load_bearing` — do not demand multiple confirmations at this tier. Step 2 was
+    explicitly told a single reliable source suffices for a spot-checked fact; holding
+    Step 8 to a higher bar than Step 1/2 agreed to would make the tier meaningless.
+  - Everything else below (independent re-sourcing, matching the claim to what the
+    source actually says, the verdict classification, the honesty/output contract)
+    still applies in full — you are narrowing *what counts as checkable*, not lowering
+    the honesty bar on what you do check.
+
 ## What to do, in order
 
 ### 1. Extract every checkable claim AFRESH

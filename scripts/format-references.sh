@@ -17,13 +17,25 @@
 
 set -euo pipefail
 die() { echo "format-references.sh: $1" >&2; exit "${2:-1}"; }
+
+# Resolve a python3 interpreter (Windows may only expose python.exe/py.exe, not a
+# python3 alias) and force UTF-8 I/O so non-ASCII characters (accented author names,
+# em-dashes) survive read/write round-trips instead of being mangled by the system
+# locale codepage.
+if command -v python3 >/dev/null 2>&1; then PY3=python3
+elif command -v python >/dev/null 2>&1; then PY3=python
+elif command -v py >/dev/null 2>&1; then PY3="py -3"
+else die "no python3 interpreter found on PATH (tried python3, python, py -3)" 1
+fi
+export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
+
 [ "$#" -eq 2 ] || die "usage: format-references.sh <state_path> bibliography|map" 1
 [ -f "$1" ] || die "state file not found: $1" 1
 case "$2" in bibliography|map) ;; *) die "mode must be 'bibliography' or 'map'" 1 ;; esac
 
 STYLE_ENV="${AW_CITATION_STYLE:-}"
 
-python3 - "$1" "$2" "$STYLE_ENV" <<'PY'
+$PY3 - "$1" "$2" "$STYLE_ENV" <<'PY'
 import json, sys
 
 state_path, mode, style_env = sys.argv[1:4]

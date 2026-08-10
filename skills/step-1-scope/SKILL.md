@@ -131,8 +131,8 @@ and a deeply reported explainer do not deserve the same amount of source-hunting
 
    | `post_category` | `rigor_tier` | `research_mode` | `adversarial_cap` |
    |---|---|---|---|
-   | musings, photos, travel | `reflective` | `none` — no external research; Step 2 becomes a personal-context capture pass | `1` |
-   | learnings, movies, books, mba | `light-check` | `spot-check` — verify only the handful of hard, named facts the piece states | `2` |
+   | musings, photos, travel | `reflective` | `none` — no external research; Step 2 becomes a personal-context capture pass | `0` — the orchestrator skips Step 8 (the adversarial-reviewer dispatch and `review-loop.sh`) entirely for this tier; there is nothing externally-checkable in a personal account, so the gate has nothing to do |
+   | learnings, movies, books, mba | `light-check` | `spot-check` — verify only the handful of hard, named facts the piece states | `2` — and the reviewer only attacks that same class of hard named facts, at the same single-source bar Step 2 used (see `agents/adversarial-reviewer.md`) |
    | deep-dive (or unrecognized) | `journalistic` | `deep` — full territory mapping, counter-evidence hunting, source triangulation | leave `controls.adversarial_cap` exactly as it already is (the plugin's configured/default value) — do **not** overwrite an explicit human/config override with a tier default |
 
    Write `controls.post_category` (the raw token), `controls.rigor_tier`, and

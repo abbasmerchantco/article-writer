@@ -33,6 +33,35 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   (same pattern as *Referencing / citation style*) so a returning user can set it without
   the Step 1 question.
 
+### Added (cont'd)
+- **Step 8 is skipped entirely for the `reflective` tier** (musings/photos/travel) — no
+  adversarial-reviewer dispatch, no `review-loop.sh` call at all, not even a single round.
+  A personal account has nothing externally-checkable, so the min-1-review floor that
+  otherwise always applies to Step 8 does not apply to this tier; `make-manifest.sh`
+  records this honestly as `verification_guarantee: "skipped-reflective-tier"`, distinct
+  from `"internal-consistency-only"` (which would wrongly imply an attempt that failed
+  rather than a deliberate choice).
+- **The adversarial reviewer now scales its scrutiny to `rigor_tier`** for `light-check`
+  runs (movies/books/learnings/mba): it only attacks the same class of hard, named facts
+  Step 2 spot-checked (not the author's opinions), and accepts a single admissible source
+  as sufficient for a load-bearing claim instead of demanding multiple independent
+  confirmations — otherwise Step 8 would silently hold a light-check piece to a stricter
+  bar than Step 1/2 ever agreed to. The orchestrator now passes `rigor_tier` to the
+  reviewer's Task dispatch alongside the run id/root/round number.
+- **Fixed a real Windows-encoding bug surfaced in production use:** every `scripts/*.sh`
+  invoked `python3` with no forced text encoding, so on Windows (where Python defaults
+  text-mode I/O to the system locale codepage, cp1252, not UTF-8) every em-dash and other
+  non-ASCII character written to or read from `state.json`/`manifest.md`/the draft got
+  silently mangled — and a literal ⚠️ emoji in `make-manifest.sh`'s own output crashed the
+  write outright. Every script now exports `PYTHONUTF8=1 PYTHONIOENCODING=utf-8` before
+  its `python3` calls.
+- **Fixed a real "python3 not found" bug surfaced in production use:** a Windows install
+  with only `python.exe`/`py.exe` on PATH (no `python3` alias) made `init-run.sh` fail
+  outright with exit 127 before a run could even be created. Every script now resolves an
+  interpreter (`python3` → `python` → `py -3`) before use; `gate-guard.sh` fails safe
+  (denies) rather than allowing through if none is found, matching its existing fail-safe
+  stance for a missing/unreadable `state.json`.
+
 ### Changed
 - **Softened the global defaults — they were tuned for deeply-reported journalism and
   were too heavy even for the `deep-dive` tier.** `per_gate_cap` default 3 → **2**;

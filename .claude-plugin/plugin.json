@@ -30,7 +30,7 @@
     "post_category": {
       "type": "string",
       "title": "Post category (rigor tier)",
-      "description": "What kind of post this is; determines how much external research and adversarial fact-checking the run does. One of: musings, photos, travel (reflective tier - no external research, no fact-checking - these are personal accounts, there's nothing to independently verify); learnings, movies, books, mba (light-check tier - only the handful of hard, named facts get spot-checked, e.g. a film's year/director or a book's author; adversarial review is capped low); deep-dive (journalistic tier - the original full pipeline: wide research, counter-evidence hunting, source triangulation, independent adversarial fact-check). Leave blank and Step 1 asks you explicitly. You can also set this per run in the scope template.",
+      "description": "What kind of post this is; determines how much external research and adversarial fact-checking the run does. One of: musings, photos, travel (reflective tier - no external research, Step 8's adversarial review is skipped entirely - these are personal accounts, there's nothing to independently verify); learnings, movies, books, mba (light-check tier - only the handful of hard, named facts get spot-checked, e.g. a film's year/director or a book's author; adversarial review is capped at 2 rounds and only attacks that same class of named facts); deep-dive (journalistic tier - the original full pipeline: wide research, counter-evidence hunting, source triangulation, independent adversarial fact-check). Leave blank and Step 1 asks you explicitly. You can also set this per run in the scope template.",
       "required": false,
       "default": ""
     },
@@ -80,7 +80,7 @@
     "adversarial_cap": {
       "type": "number",
       "title": "Adversarial review cap (max), deep-dive tier",
-      "description": "Upper bound on the Step 8 adversarial review loop for the deep-dive/journalistic post_category. Default softened from the original 5 to 3. The lighter post_category tiers set their own, lower cap automatically at Step 1 (reflective: 1, light-check: 2) - this value only applies when post_category is deep-dive or unset.",
+      "description": "Upper bound on the Step 8 adversarial review loop for the deep-dive/journalistic post_category. Default softened from the original 5 to 3. The lighter post_category tiers override this automatically at Step 1: light-check caps it at 2 and narrows what the reviewer attacks; reflective skips Step 8 entirely (no adversarial review at all) since a personal post has nothing externally-checkable. This value only applies when post_category is deep-dive or unset.",
       "required": false,
       "default": 3,
       "min": 1

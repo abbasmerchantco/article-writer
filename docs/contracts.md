@@ -313,11 +313,20 @@ Written once by `init-run.sh`, never mutated. The immutable "record of intent".
 
 ## 6. Adversarial loop (Step 8) — not part of `gate-counter.sh`
 
-Bounded separately (requirements §5.2): min 1 / max 5 rounds, tracked in
-`state.adversarial.rounds`. Severity routing (Unsupported→Step 2, peripheral-wrong→Step 5,
-load-bearing-wrong→Step 3/1) is enforced in Phase 4, not by `gate-counter.sh`. Documented
-here only so Phase 1 authors know Step 8 is deliberately out of the per-gate counter's
-scope.
+Bounded separately (requirements §5.2): min 1 / max 3 rounds for `light-check`/
+`journalistic` runs, tracked in `state.adversarial.rounds`. Severity routing
+(Unsupported→Step 2, peripheral-wrong→Step 5, load-bearing-wrong→Step 3/1) is enforced in
+Phase 4, not by `gate-counter.sh`. Documented here only so Phase 1 authors know Step 8 is
+deliberately out of the per-gate counter's scope.
+
+**`reflective`-tier exception (requirements §2.4a):** the orchestrator skips Step 8
+entirely for a `reflective` run — no reviewer dispatch, no `review-loop.sh` call. The
+min-1 floor above does not apply to this tier. `state.adversarial` stays at its
+`init-run.sh` default (`{rounds: 0, ledger: []}`); `make-manifest.sh` recognizes this case
+(`rigor_tier == "reflective"` and `rounds == 0` with no `verification_guarantee` set) and
+records `verification_guarantee: "skipped-reflective-tier"` — a distinct, honest value
+from `"internal-consistency-only"`, since the latter would misstate why 0 rounds ran (a
+deliberate choice, not an unavailable capability).
 
 ---
 

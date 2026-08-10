@@ -18,6 +18,17 @@
 
 set -euo pipefail
 die() { echo "source-check.sh: $1" >&2; exit "${2:-1}"; }
+
+# Resolve a python3 interpreter (Windows may only expose python.exe/py.exe, not a
+# python3 alias) and force UTF-8 I/O so non-ASCII characters in state.json/the policy
+# file survive read round-trips instead of being mangled by the system locale codepage.
+if command -v python3 >/dev/null 2>&1; then PY3=python3
+elif command -v python >/dev/null 2>&1; then PY3=python
+elif command -v py >/dev/null 2>&1; then PY3="py -3"
+else die "no python3 interpreter found on PATH (tried python3, python, py -3)" 1
+fi
+export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
+
 [ "$#" -eq 1 ] || die "usage: source-check.sh <state_path>" 1
 [ -f "$1" ] || die "state file not found: $1" 1
 
@@ -29,7 +40,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 POLICY_FILE="${AW_SOURCE_POLICY_FILE:-$SCRIPT_DIR/../config/source-policy.json}"
 [ -f "$POLICY_FILE" ] || die "source policy file not found: $POLICY_FILE" 1
 
-python3 - "$1" "$POLICY_FILE" <<'PY'
+$PY3 - "$1" "$POLICY_FILE" <<'PY'
 import json, re, sys
 
 state = json.load(open(sys.argv[1]))

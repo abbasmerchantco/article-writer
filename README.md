@@ -52,8 +52,10 @@ the `output_root` control (see *Controls* below) — in `input/` (commission), `
 8. **Adversarial review** — isolated agent re-sources claims independently and classifies them.
 
 Steps 1–7 each end in a lightweight QA gate (cap 2 → escalate upstream). Step 8 is the one
-heavyweight gate: min 1 / max 3 reviews for a deep-dive post (lower still for reflective/
-light-check posts — see *Post category & rigor tier*), with severity-based routing.
+heavyweight gate: min 1 / max 3 reviews for a deep-dive post, max 2 for a light-check post
+(movies/books/learnings/mba) — and skipped entirely for a reflective post (musings/
+photos/travel), which has nothing externally-checkable to review. See *Post category &
+rigor tier*.
 
 ## Components
 
@@ -108,11 +110,11 @@ independent source access (web search/fetch) in Steps 2 and 8.
 template) is what actually controls run time and token cost, because it decides how much
 of Steps 2 and 8 run at all:
 
-| You pick | Tier | Step 2 (research) | Step 8 (adversarial cap) |
+| You pick | Tier | Step 2 (research) | Step 8 (adversarial review) |
 |---|---|---|---|
-| `musings`, `photos`, `travel` | reflective | skipped — a personal-context capture pass instead | 1 (stops clean on round 1; nothing to fact-check) |
-| `learnings`, `movies`, `books`, `mba` | light-check | spot-checks only the named hard facts (film year/director, book author, etc.) | 2 |
-| `deep-dive` | journalistic | full territory-mapping, counter-evidence hunting, source triangulation | whatever `adversarial_cap` is configured to (default 3) |
+| `musings`, `photos`, `travel` | reflective | skipped — a personal-context capture pass instead | **skipped entirely** — no reviewer dispatch at all; nothing to fact-check in a personal account |
+| `learnings`, `movies`, `books`, `mba` | light-check | spot-checks only the named hard facts (film year/director, book author, etc.) | runs, cap 2, but only attacks that same class of named facts (single source is enough — no piling on) |
+| `deep-dive` | journalistic | full territory-mapping, counter-evidence hunting, source triangulation | full scrutiny, whatever `adversarial_cap` is configured to (default 3) |
 
 The manifest records `post_category`/`rigor_tier`/`research_mode` and is explicit that a
 reflective/light-check run **skipped research by design**, not because source access was
@@ -154,13 +156,14 @@ bash tests/acceptance.sh         # every requirements §10 acceptance criterion
 The plugin verifies **external truth** only where it has independent source access;
 otherwise it checks **internal consistency** only, and the run manifest says which was
 obtained — it never implies fact-checking it did not perform. All loops are bounded
-(per-gate 2, adversarial 3 for deep-dive / 1 for reflective / 2 for light-check),
-enforced by scripts, not model self-report.
+(per-gate 2, adversarial 3 for deep-dive / 2 for light-check / **skipped entirely** for
+reflective), enforced by scripts, not model self-report.
 
-A `reflective`/`light-check` run's manifest states plainly that research was **skipped
-by design** for that post category, not attempted-and-unavailable — those are different
-claims, and conflating them would be exactly the kind of overclaiming this plugin exists
-to avoid.
+A `reflective` run's manifest states plainly that Step 8 (and Step 2's research) were
+**skipped by design** for that post category, not attempted-and-unavailable — those are
+different claims, and conflating them would be exactly the kind of overclaiming this
+plugin exists to avoid. A `light-check` run's manifest is equally explicit that only a
+handful of named facts were spot-checked, not the whole piece.
 
 **Originality:** the Step 5 originality pass detects copying by comparing the draft against
 the source excerpts the run captured (and independent search where available); with no
