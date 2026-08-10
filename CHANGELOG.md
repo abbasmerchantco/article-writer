@@ -5,6 +5,69 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-08-10
+
+### Removed — the whole gated pipeline
+
+Per direct user feedback ("idgaf about gates and caps and all this, just simplify the
+whole thing") the entire deterministic 8-step pipeline from 0.1.0–0.5.0 is gone:
+per-gate iteration caps, escalation routing, the Step 8 adversarial-review loop and its
+isolated reviewer subagent, citation-style menus and formatted bibliographies,
+source-tier whitelist/blacklist enforcement, plagiarism-remedy verification, the
+`PreToolUse` guard hook, and the mandatory-field scope-template hard-stop. All of that
+was built for deeply-reported, argumentative journalism; for a personal blog (musings,
+learnings, movies, books, photos, travel, MBA notes) it was pure overhead — the
+directly-preceding measured run took 45+ minutes and 165k+ tokens to write one post.
+
+### Added — one simple, conversational flow
+
+- **`commands/write-article.md` replaces the two-phase command + orchestrator + 7 step
+  skills.** `/write-article <topic + any brief details>` gathers whatever of
+  audience/intention/angle/points-to-cover/post-category the human gives it (asking,
+  briefly, only if audience+intention are both missing — never a hard-stop), researches
+  the topic (scaled to what the piece needs, not a fixed depth), drafts it, and then
+  iterates on the human's plain-conversation feedback for as long as they want. The
+  human's own satisfaction is the only quality gate left. `/write-article continue`
+  resumes the most recent unpublished draft.
+- **One folder per run**, no `input`/`interim`/`output` triplication:
+  `<output_root>/<run_id>/`, containing `scope.md` + `article.md` once published, and a
+  small internal `.article-writer/` subfolder (`brief.json`, `draft.md`,
+  `frontmatter.json`) for everything in progress.
+- **`scripts/publish.sh`** (new) — deterministically assembles the final `article.md`
+  with YAML frontmatter matching the user's site (`title`, `category`, `date`,
+  `excerpt`, `readTime`, `featured`, `coverImage`, `published`, `layout`, `imageAlt`,
+  `image`) plus the body, and writes `scope.md` as a readable record of the brief.
+  `title`/`excerpt`/`featured`/cover-image are model-supplied (judgement) via
+  `frontmatter.json`; `date`/`readTime`/`layout`/`category` are computed
+  deterministically. `published` defaults `false`; unset image fields default to a
+  `TODO-` placeholder rather than blocking publish.
+- **`scripts/init-run.sh` rewritten** — allocates the single flat folder (still with
+  the date+sequence+slug naming and slug-collision dedup-and-ask from earlier versions,
+  since those are genuinely useful and unrelated to the gating machinery being
+  removed), and writes a small `brief.json` instead of the old `state.json` schema.
+- **`tests/smoke.sh`** (new) — the only test suite that still matters: exercises
+  `init-run.sh` (allocation, dedup, brief fields) and `publish.sh` (frontmatter
+  assembly, readTime computation, defaults vs. model-supplied overrides).
+
+### Known limitation of this rewrite
+
+**Files could not be deleted in the session that did this rewrite** (no shell access
+was available). Every file made obsolete by the removal above was instead emptied out
+to a short "DEPRECATED, safe to delete, see this note" stub rather than actually
+removed from the repo: `scripts/gate-counter.sh`, `scripts/gate-guard.sh`,
+`scripts/review-loop.sh`, `scripts/source-check.sh`, `scripts/originality-check.sh`,
+`scripts/to-docx.sh`, `scripts/format-references.sh`, `agents/adversarial-reviewer.md`,
+`skills/orchestrator/`, `skills/step-1-scope/` … `skills/step-7-second-eyes/`,
+`templates/scope-template.md`, `config/source-policy.json`,
+`tests/acceptance.sh`, `tests/phase1-core.sh`, `tests/phase2-guard.sh`,
+`tests/phase4-review.sh`, `tests/phase6-refs-docx.sh`, `tests/phase7-output-root.sh`,
+`tests/phase-originality.sh`, plus `docs/contracts.md`, `docs/architecture-decision.md`,
+and `docs/high-level.html` (shrunk to short deprecation notices, kept for historical
+reference). None of them are referenced by anything anymore — `hooks/hooks.json` no
+longer registers the guard hook, and `commands/write-article.md` never calls the
+removed scripts/skills/agent. Delete them whenever convenient (e.g. `git rm` the paths
+above) for a fully clean tree; nothing depends on them being gone.
+
 ## [0.5.0] — 2026-08-10
 
 ### Added

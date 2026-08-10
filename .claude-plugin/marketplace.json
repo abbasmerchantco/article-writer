@@ -8,7 +8,7 @@
     {
       "name": "article-writer",
       "source": "./",
-      "description": "Turn a one-line subject into a publish-ready article via an 8-step, gated workflow with deterministic loop caps and an adversarial fact-check review."
+      "description": "Give a topic, audience, intention, angle, and points to cover; article-writer researches it, drafts it, and iterates with you conversationally until you're happy, then writes the final formatted article into one folder."
     }
   ]
 }

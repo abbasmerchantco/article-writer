@@ -1,3 +1,4 @@
 {
-  "runs_root": "C:\Users\abbzt\OneDrive\Documents\ArticleWriterRuns"
+  "_note": "Not read by any script in this plugin — output_root in plugin.json userConfig is what's actually used. This file appears to be a leftover from an earlier prototype; safe to delete. Fixed here only because its previous content was invalid JSON (unescaped backslashes).",
+  "runs_root": "C:/Users/Abs/OneDrive/ArticleWriterRuns"
 }

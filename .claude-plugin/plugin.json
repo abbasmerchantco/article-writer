@@ -2,125 +2,51 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "article-writer",
   "displayName": "Article Writer",
-  "version": "0.5.0",
-  "description": "Turn a one-line subject into a publish-ready article via an 8-step, gated workflow with deterministic loop caps and a Step-5 plagiarism/attribution pass. Rigor scales to a `post_category` you pick at Step 1: full research + adversarial fact-check for deep-dive pieces, a trimmed spot-check for review/notes-style posts, or no external research/fact-check at all for personal reflective writing.",
+  "version": "0.6.0",
+  "description": "Give a topic, audience, intention, angle, and points to cover; article-writer researches it, checks facts, drafts it, and iterates with you conversationally until you're happy, then writes the final formatted article (plus a scope record) into one folder.",
   "author": {
     "name": "Uttakarsh Tikku"
   },
   "repository": "https://github.com/abbasmerchantco/article-writer",
   "homepage": "https://github.com/abbasmerchantco/article-writer",
   "license": "MIT",
-  "keywords": ["writing", "articles", "content", "research", "fact-check", "workflow"],
+  "keywords": ["writing", "articles", "content", "research", "blog"],
   "defaultEnabled": true,
   "userConfig": {
     "output_root": {
       "type": "string",
-      "title": "Runs root directory (optional)",
-      "description": "Absolute path to a persistent directory where article-writer stores every run's input/interim/output folders, instead of the current working directory. Set this when Claude is launched from a temporary or sandboxed session directory (e.g. Cowork) that can disappear or become inaccessible \u2014 point it at a durable, synced location such as a OneDrive folder. Use forward slashes (e.g. C:/Users/you/OneDrive/ArticleWriterRuns) since the enforcement scripts run under bash. Leave blank to use the current working directory (original behavior). The directory is created if it does not already exist.",
+      "title": "Runs root directory",
+      "description": "Absolute path to the directory where article-writer stores every run's folder. Each run gets exactly one folder here (containing scope.md + article.md once published). Use forward slashes (e.g. C:/Users/you/OneDrive/ArticleWriterRuns) since the scripts run under bash. Leave blank to use the current working directory. The directory is created if it does not already exist.",
       "required": false,
-      "default": "C:/Users/abbzt/OneDrive/ArticleWriterRuns"
+      "default": "C:/Users/Abs/OneDrive/ArticleWriterRuns"
     },
     "audience": {
       "type": "string",
-      "title": "Target reader / audience",
-      "description": "Default audience if the scope template leaves it unset. Reshapes scope, vocabulary, and depth.",
+      "title": "Default audience",
+      "description": "Fallback audience if you don't specify one when starting a run.",
       "required": false,
-      "default": "general informed reader"
-    },
-    "post_category": {
-      "type": "string",
-      "title": "Post category (rigor tier)",
-      "description": "What kind of post this is; determines how much external research and adversarial fact-checking the run does. One of: musings, photos, travel (reflective tier - no external research, Step 8's adversarial review is skipped entirely - these are personal accounts, there's nothing to independently verify); learnings, movies, books, mba (light-check tier - only the handful of hard, named facts get spot-checked, e.g. a film's year/director or a book's author; adversarial review is capped at 2 rounds and only attacks that same class of named facts); deep-dive (journalistic tier - the original full pipeline: wide research, counter-evidence hunting, source triangulation, independent adversarial fact-check). Leave blank and Step 1 asks you explicitly. You can also set this per run in the scope template.",
-      "required": false,
-      "default": ""
-    },
-    "angle": {
-      "type": "string",
-      "title": "Angle / stance override",
-      "description": "Fix the angle instead of letting the agent derive it. 'auto' lets the agent choose.",
-      "required": false,
-      "default": "auto"
-    },
-    "length": {
-      "type": "string",
-      "title": "Length / format target",
-      "description": "Constrains scope and structure (e.g. short, medium, long, or a word count).",
-      "required": false,
-      "default": "medium"
+      "default": "general readers of your blog"
     },
     "tone": {
       "type": "string",
-      "title": "Tone / voice",
-      "description": "Register and formality of the writing.",
+      "title": "Default tone / voice",
+      "description": "Fallback register and formality if you don't specify one when starting a run.",
       "required": false,
-      "default": "neutral, plain"
+      "default": "honest, plain, a bit conversational"
     },
-    "source_policy": {
+    "length": {
       "type": "string",
-      "title": "Source policy",
-      "description": "Which evidence is admissible. 'default' uses the shipped whitelist/blacklist (requirements §6).",
+      "title": "Default length / format target",
+      "description": "Fallback length if you don't specify one when starting a run (e.g. short, medium, long, or a word count).",
       "required": false,
-      "default": "default"
+      "default": "medium"
     },
-    "source_quality_threshold": {
+    "post_category": {
       "type": "string",
-      "title": "Source-quality threshold",
-      "description": "Minimum tier a load-bearing claim may rest on.",
+      "title": "Default post category",
+      "description": "Optional hint for how much research a run does by default if you don't say otherwise per run (e.g. musings, learnings, movies, books, photos, travel, mba). Leave blank to decide per run.",
       "required": false,
-      "default": "peer-reviewed / reputable only"
-    },
-    "per_gate_cap": {
-      "type": "number",
-      "title": "Per-gate iteration cap",
-      "description": "Max retries per QA gate (Steps 1-7) before escalating upstream. Default softened from the original 3 to 2 - the gates are meant to be lightweight tripwires, not a reason to loop repeatedly.",
-      "required": false,
-      "default": 2,
-      "min": 1
-    },
-    "adversarial_cap": {
-      "type": "number",
-      "title": "Adversarial review cap (max), deep-dive tier",
-      "description": "Upper bound on the Step 8 adversarial review loop for the deep-dive/journalistic post_category. Default softened from the original 5 to 3. The lighter post_category tiers override this automatically at Step 1: light-check caps it at 2 and narrows what the reviewer attacks; reflective skips Step 8 entirely (no adversarial review at all) since a personal post has nothing externally-checkable. This value only applies when post_category is deep-dive or unset.",
-      "required": false,
-      "default": 3,
-      "min": 1
-    },
-    "adversarial_min": {
-      "type": "number",
-      "title": "Adversarial review floor (min)",
-      "description": "Minimum number of Step 8 reviews that always run.",
-      "required": false,
-      "default": 1,
-      "min": 1
-    },
-    "escalation_routing": {
-      "type": "string",
-      "title": "Escalation routing",
-      "description": "Where a capped/failed gate sends the work. 'default' uses the requirements §5.1 table.",
-      "required": false,
-      "default": "default"
-    },
-    "plagiarism_ngram": {
-      "type": "number",
-      "title": "Plagiarism overlap sensitivity (consecutive words)",
-      "description": "The minimum run of consecutive words the Step 5 originality scan treats as a verbatim/near-verbatim match against captured source text. Lower = stricter (more flags). Detection sensitivity only; ethical remedy is chosen per passage.",
-      "required": false,
-      "default": 8,
-      "min": 3
-    },
-    "citation_style": {
-      "type": "string",
-      "title": "Citation / referencing style",
-      "description": "Referencing scheme for in-text citations and the bibliography. One of: apa, mla, chicago-author-date, chicago-notes, harvard, ieee, vancouver, none. If unset, Step 1 asks you explicitly.",
-      "required": false,
-      "default": "apa"
-    },
-    "output_format": {
-      "type": "string",
-      "title": "Final article format",
-      "description": "Format of the published article deliverable: 'docx' (Microsoft Word, default) or 'md' (Markdown).",
-      "required": false,
-      "default": "docx"
+      "default": ""
     }
   }
 }

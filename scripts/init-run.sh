@@ -1,35 +1,37 @@
 #!/usr/bin/env bash
 #
-# init-run.sh — deterministic run initialization for the `article-writer` plugin.
+# init-run.sh — allocate one flat run folder for article-writer.
 #
-# Contract: docs/contracts.md §1 (run identity & folders), §2 (this
-# interface), §4 (state.json schema), §5 (trigger.json schema).
-# Requirements: docs/requirements.md §3, §2.1, §2.4.
+# No gates, no caps, no controls machinery. One folder per run, directly under the
+# resolved root: <root>/<run_id>/, plus a small internal <run_id>/.article-writer/
+# subfolder for the brief + in-progress draft. Everything else (per-gate caps,
+# adversarial review, citation styles, source-tiering) has been removed — see
+# CHANGELOG.md. The run folder is what the human sees; .article-writer/ is bookkeeping.
 #
 # Usage:
-#   init-run.sh <subject...>            # normal: slug dedup-check, then allocate + create
-#   init-run.sh --force-new <subject...># skip dedup scan, allocate a fresh run
-#   init-run.sh --reuse <run_id>        # resolve an existing run, no scan, no allocation
+#   init-run.sh <topic...>              # normal: dedup-check, then allocate + create
+#   init-run.sh --force-new <topic...>  # skip dedup, allocate a fresh run
+#   init-run.sh --reuse <run_id>        # resolve an existing run, no allocation
 #
 # Output (stdout, exactly one line on success):
 #   RUN <run_id>                        # exit 0
 #   DUPLICATE_MATCH <matched_run_id>    # exit 2 (nothing created)
 # All diagnostics go to stderr. Exit codes: 0 success · 2 duplicate slug · 1 usage/other.
 #
-# Environment: bash 3.2 (macOS) — no associative arrays, no ${var,,}. No jq (uses
-# python3). No network calls (hard security requirement, requirements §11).
+# Brief fields (audience/intention/angle/points/post_category) come from AW_* env vars,
+# set by the caller (commands/write-article.md), and are written into
+# <run_id>/.article-writer/brief.json alongside the raw topic. All are free text; none
+# are enforced or validated beyond "recorded as given."
+#
+# Environment: bash 3.2+ (macOS/Windows git-bash). No jq (uses python3). No network.
 
 set -euo pipefail
 
 err() { printf '%s\n' "$*" >&2; }
 die() { err "$@"; exit 1; }
 
-# Resolve a python3 interpreter - some Windows installs only expose python.exe/py.exe on
-# PATH, not a python3 alias, which previously caused a hard, confusing exit-127 failure
-# right at run creation. Also force UTF-8 everywhere python3 runs below, so em-dashes and
-# other non-ASCII characters in trigger.json/state.json survive the write, instead of
-# being mangled by Python defaulting text-mode I/O to the system locale codepage (cp1252
-# on Windows) when no encoding is specified.
+# Resolve a python3 interpreter (some Windows installs only expose python.exe/py.exe on
+# PATH, not a python3 alias) and force UTF-8 I/O so non-ASCII characters survive writes.
 if command -v python3 >/dev/null 2>&1; then PY3=python3
 elif command -v python >/dev/null 2>&1; then PY3=python
 elif command -v py >/dev/null 2>&1; then PY3="py -3"
@@ -38,15 +40,14 @@ fi
 export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
 
 usage() {
-  err "usage: init-run.sh <subject...>"
-  err "       init-run.sh --force-new <subject...>"
+  err "usage: init-run.sh <topic...>"
+  err "       init-run.sh --force-new <topic...>"
   err "       init-run.sh --reuse <run_id>"
 }
 
 # ---------------------------------------------------------------------------
-# Slug derivation (contracts.md §1): lowercase -> spaces to '-' -> strip
-# punctuation -> collapse repeated '-' -> trim leading/trailing '-' ->
-# truncate to 40 chars -> re-trim any trailing '-'.
+# Slug derivation: lowercase -> spaces to '-' -> strip punctuation -> collapse
+# repeated '-' -> trim leading/trailing '-' -> truncate to 40 chars -> re-trim.
 # ---------------------------------------------------------------------------
 derive_slug() {
   local raw="$1" s
@@ -61,30 +62,12 @@ derive_slug() {
   printf '%s' "$s"
 }
 
-# Extract the slug portion (everything after YYYYMMDD-NNNNN-) from a folder name.
-name_slug() {
-  printf '%s' "$1" | sed -n 's/^[0-9]\{8\}-[0-9]\{5\}-\(.*\)$/\1/p'
-}
-
-# Extract the 5-digit sequence from a folder name.
-name_seq() {
-  printf '%s' "$1" | sed -n 's/^[0-9]\{8\}-\([0-9]\{5\}\).*$/\1/p'
-}
+name_slug() { printf '%s' "$1" | sed -n 's/^[0-9]\{8\}-[0-9]\{5\}-\(.*\)$/\1/p'; }
+name_seq()  { printf '%s' "$1" | sed -n 's/^[0-9]\{8\}-\([0-9]\{5\}\).*$/\1/p'; }
 
 # ---------------------------------------------------------------------------
-# Root directory resolution (contracts.md §1a; requirements §2.4 output_root).
-#
-# All three top-level folders (input/, interim/, output/) live under a "run
-# root". By default that root is the current working directory (original
-# behavior). If AW_OUTPUT_ROOT is set (from the output_root plugin control),
-# it overrides the root — this lets runs persist in a durable location (e.g.
-# a OneDrive-synced folder) instead of wherever Claude happened to be
-# launched from, which may be an ephemeral session sandbox.
-#
-# The resolved root is ALWAYS an absolute path (so it stays valid even if a
-# later session resumes this run from a different cwd), created if missing,
-# and recorded in trigger.json / state.json ("paths.root") so every other
-# script/skill can find the run without re-deriving AW_OUTPUT_ROOT itself.
+# Root directory resolution (unchanged mechanism from earlier versions): AW_OUTPUT_ROOT
+# overrides the current working directory. Always resolved to an absolute path.
 # ---------------------------------------------------------------------------
 resolve_root() {
   requested="${AW_OUTPUT_ROOT:-}"
@@ -113,7 +96,7 @@ case "$1" in
   --force-new)
     MODE="force-new"
     shift
-    [ "$#" -ge 1 ] || { err "--force-new requires a subject"; usage; exit 1; }
+    [ "$#" -ge 1 ] || { err "--force-new requires a topic"; usage; exit 1; }
     ;;
   --reuse)
     MODE="reuse"
@@ -132,230 +115,75 @@ esac
 # ---------------------------------------------------------------------------
 if [ "$MODE" = "reuse" ]; then
   RUN_ID="$1"
-  if [ -d "$ROOT_DIR/input/$RUN_ID" ] || [ -d "$ROOT_DIR/interim/$RUN_ID" ] || [ -d "$ROOT_DIR/output/$RUN_ID" ]; then
+  if [ -d "$ROOT_DIR/$RUN_ID" ]; then
     printf 'RUN %s\n' "$RUN_ID"
     exit 0
-  fi
-  # Backward-compat: a run created before AW_OUTPUT_ROOT existed (or with it
-  # unset this time) may live directly under the plain current working
-  # directory instead of $ROOT_DIR. Only relevant when the two differ.
-  if [ "$ROOT_DIR" != "$(pwd)" ]; then
-    if [ -d "input/$RUN_ID" ] || [ -d "interim/$RUN_ID" ] || [ -d "output/$RUN_ID" ]; then
-      printf 'RUN %s\n' "$RUN_ID"
-      exit 0
-    fi
   fi
   die "no existing run found for run_id: $RUN_ID (looked under $ROOT_DIR)"
 fi
 
 # ---------------------------------------------------------------------------
-# Normal / force-new: derive slug from the subject (all remaining args).
-# The raw subject is preserved verbatim; only the label is slugified.
+# Normal / force-new: derive slug from the topic (all remaining args).
 # ---------------------------------------------------------------------------
-RAW_SUBJECT="$*"
-SLUG=$(derive_slug "$RAW_SUBJECT")
-[ -n "$SLUG" ] || die "subject produced an empty slug; provide a subject with alphanumeric content"
+RAW_TOPIC="$*"
+SLUG=$(derive_slug "$RAW_TOPIC")
+[ -n "$SLUG" ] || die "topic produced an empty slug; provide a topic with alphanumeric content"
 
 # ---------------------------------------------------------------------------
-# Slug dedup scan (contracts.md §2.1): scan ALL runs across ALL dates in all
-# three top-level folders for a slug match. On match, create nothing and exit 2.
-# --force-new skips this scan.
+# Slug dedup scan: scan every run folder directly under root, across all dates, for
+# a slug match. On match, create nothing and exit 2. --force-new skips this scan.
 # ---------------------------------------------------------------------------
-if [ "$MODE" != "force-new" ]; then
-  # Scan $ROOT_DIR, and — if it differs from the plain cwd (custom
-  # AW_OUTPUT_ROOT in effect) — also scan the cwd, so a run created before
-  # output_root was set (or in a session without it) still counts as a match.
-  for scan_base in "$ROOT_DIR" "$(pwd)"; do
-    for base in input interim output; do
-      [ -d "$scan_base/$base" ] || continue
-      for d in "$scan_base/$base"/*/; do
-        [ -d "$d" ] || continue
-        name=$(basename "$d")
-        existing=$(name_slug "$name")
-        if [ -n "$existing" ] && [ "$existing" = "$SLUG" ]; then
-          printf 'DUPLICATE_MATCH %s\n' "$name"
-          exit 2
-        fi
-      done
-    done
-    [ "$ROOT_DIR" != "$(pwd)" ] || break
+if [ "$MODE" != "force-new" ] && [ -d "$ROOT_DIR" ]; then
+  for d in "$ROOT_DIR"/*/; do
+    [ -d "$d" ] || continue
+    name=$(basename "$d")
+    existing=$(name_slug "$name")
+    if [ -n "$existing" ] && [ "$existing" = "$SLUG" ]; then
+      printf 'DUPLICATE_MATCH %s\n' "$name"
+      exit 2
+    fi
   done
 fi
 
 # ---------------------------------------------------------------------------
-# Sequence allocation (contracts.md §1): scan folders sharing today's YYYYMMDD
-# prefix across all three top-level folders, take max NNNNN, increment.
-# Scoped per day, resets to 00001 each new date.
+# Sequence allocation: scan run folders sharing today's YYYYMMDD prefix directly
+# under root, take max NNNNN, increment. Scoped per day, resets to 00001 daily.
 # ---------------------------------------------------------------------------
-# Sequence is scoped to where the run will actually be created ($ROOT_DIR) —
-# a custom output_root starts its own 00001 sequence, independent of any
-# legacy runs left behind under a plain cwd.
 DATE=$(date +%Y%m%d)
 max=0
-for base in input interim output; do
-  [ -d "$ROOT_DIR/$base" ] || continue
-  for d in "$ROOT_DIR/$base"/${DATE}-*/; do
+if [ -d "$ROOT_DIR" ]; then
+  for d in "$ROOT_DIR"/${DATE}-*/; do
     [ -d "$d" ] || continue
     name=$(basename "$d")
     seq_part=$(name_seq "$name")
     [ -n "$seq_part" ] || continue
-    # 10# forces base-10 so leading zeros are not read as octal.
     n=$((10#$seq_part))
     if [ "$n" -gt "$max" ]; then max="$n"; fi
   done
-done
+fi
 next=$((max + 1))
 SEQ=$(printf '%05d' "$next")
 
 RUN_ID="${DATE}-${SEQ}-${SLUG}"
 
 # ---------------------------------------------------------------------------
-# Create the folder triplet under the resolved root (requirements §2.4
-# output_root; defaults to the current working directory, unchanged from
-# original behavior).
+# Create ONE folder for this run, plus its small internal bookkeeping subfolder.
 # ---------------------------------------------------------------------------
-mkdir -p "$ROOT_DIR/input/$RUN_ID" \
-         "$ROOT_DIR/interim/$RUN_ID" \
-         "$ROOT_DIR/output/$RUN_ID"
+mkdir -p "$ROOT_DIR/$RUN_ID/.article-writer"
 
-TRIGGER_PATH="$ROOT_DIR/input/$RUN_ID/trigger.json"
-STATE_PATH="$ROOT_DIR/interim/$RUN_ID/state.json"
-
-# ---------------------------------------------------------------------------
-# Resolve controls from AW_* env vars, falling back to the §4 defaults.
-# ---------------------------------------------------------------------------
-AUDIENCE="${AW_AUDIENCE:-general informed reader}"
-ANGLE="${AW_ANGLE:-auto}"
-LENGTH="${AW_LENGTH:-medium}"
-TONE="${AW_TONE:-neutral, plain}"
-SOURCE_POLICY="${AW_SOURCE_POLICY:-default}"
-SOURCE_QUALITY_THRESHOLD="${AW_SOURCE_QUALITY_THRESHOLD:-peer-reviewed / reputable only}"
-# Softened baseline (was 3/5) - these are the deep-dive/journalistic-tier defaults.
-# Lighter post_category tiers (reflective, light-check) override adversarial_cap and
-# research_mode explicitly in Step 1, once the human names the post's category
-# (requirements §2.4, §4 Step 1/2).
-PER_GATE_CAP="${AW_PER_GATE_CAP:-2}"
-ADVERSARIAL_CAP="${AW_ADVERSARIAL_CAP:-3}"
-ADVERSARIAL_MIN="${AW_ADVERSARIAL_MIN:-1}"
-ESCALATION_ROUTING="${AW_ESCALATION_ROUTING:-default}"
-PLAGIARISM_NGRAM="${AW_PLAGIARISM_NGRAM:-8}"
-POST_CATEGORY="${AW_POST_CATEGORY:-}"
-RESEARCH_MODE="${AW_RESEARCH_MODE:-deep}"
-
+BRIEF_PATH="$ROOT_DIR/$RUN_ID/.article-writer/brief.json"
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-# ---------------------------------------------------------------------------
-# Write trigger.json (§5) and state.json (§4) via python3. Values are passed
-# through the environment (no shell interpolation into the JSON), and each file
-# is written atomically (temp file + os.replace).
-# ---------------------------------------------------------------------------
 export AW_RUN_ID="$RUN_ID" AW_DATE="$DATE" AW_SEQ="$SEQ" AW_SLUG="$SLUG" \
-  AW_RAW_SUBJECT="$RAW_SUBJECT" AW_TIMESTAMP="$TIMESTAMP" \
-  AW_TRIGGER_PATH="$TRIGGER_PATH" AW_STATE_PATH="$STATE_PATH" AW_ROOT_DIR="$ROOT_DIR" \
-  AW_C_AUDIENCE="$AUDIENCE" AW_C_ANGLE="$ANGLE" AW_C_LENGTH="$LENGTH" \
-  AW_C_TONE="$TONE" AW_C_SOURCE_POLICY="$SOURCE_POLICY" \
-  AW_C_SOURCE_QUALITY_THRESHOLD="$SOURCE_QUALITY_THRESHOLD" \
-  AW_C_PER_GATE_CAP="$PER_GATE_CAP" AW_C_ADVERSARIAL_CAP="$ADVERSARIAL_CAP" \
-  AW_C_ADVERSARIAL_MIN="$ADVERSARIAL_MIN" AW_C_ESCALATION_ROUTING="$ESCALATION_ROUTING" \
-  AW_C_PLAGIARISM_NGRAM="$PLAGIARISM_NGRAM" AW_C_POST_CATEGORY="$POST_CATEGORY" \
-  AW_C_RESEARCH_MODE="$RESEARCH_MODE"
+  AW_RAW_TOPIC="$RAW_TOPIC" AW_TIMESTAMP="$TIMESTAMP" AW_BRIEF_PATH="$BRIEF_PATH" \
+  AW_ROOT_DIR="$ROOT_DIR" \
+  AW_B_AUDIENCE="${AW_AUDIENCE:-}" AW_B_INTENTION="${AW_INTENTION:-}" \
+  AW_B_ANGLE="${AW_ANGLE:-}" AW_B_POINTS="${AW_POINTS:-}" \
+  AW_B_POST_CATEGORY="${AW_POST_CATEGORY:-}" AW_B_TONE="${AW_TONE:-}" \
+  AW_B_LENGTH="${AW_LENGTH:-}"
 
 $PY3 - <<'PY'
-import json, os, sys, tempfile
-
-def as_int(name):
-    v = os.environ[name]
-    try:
-        return int(str(v).strip())
-    except (ValueError, TypeError):
-        sys.stderr.write("control %s must be an integer, got: %r\n" % (name, v))
-        sys.exit(1)
-
-root_dir = os.environ["AW_ROOT_DIR"]
-
-controls = {
-    "output_root": root_dir,
-    "audience": os.environ["AW_C_AUDIENCE"],
-    "angle": os.environ["AW_C_ANGLE"],
-    "length": os.environ["AW_C_LENGTH"],
-    "tone": os.environ["AW_C_TONE"],
-    "source_policy": os.environ["AW_C_SOURCE_POLICY"],
-    "source_quality_threshold": os.environ["AW_C_SOURCE_QUALITY_THRESHOLD"],
-    "per_gate_cap": as_int("AW_C_PER_GATE_CAP"),
-    "adversarial_cap": as_int("AW_C_ADVERSARIAL_CAP"),
-    "adversarial_min": as_int("AW_C_ADVERSARIAL_MIN"),
-    "escalation_routing": os.environ["AW_C_ESCALATION_ROUTING"],
-    "plagiarism_ngram": as_int("AW_C_PLAGIARISM_NGRAM"),
-    # post_category / research_mode / rigor_tier (requirements §2.4, §4 Step 1/2):
-    # post_category is blank until the human names it (Step 1 asks if unset, or the
-    # scope template sets it directly). research_mode defaults to "deep" (unchanged,
-    # full-rigor behavior) until Step 1 resolves a lighter tier for it. rigor_tier is
-    # set by Step 1 alongside post_category, purely for readability in state/manifest.
-    "post_category": os.environ["AW_C_POST_CATEGORY"],
-    "research_mode": os.environ["AW_C_RESEARCH_MODE"],
-    "rigor_tier": None,
-}
-
-run_id = os.environ["AW_RUN_ID"]
-ts = os.environ["AW_TIMESTAMP"]
-raw_subject = os.environ["AW_RAW_SUBJECT"]
-slug = os.environ["AW_SLUG"]
-
-# paths.root is the canonical, absolute base for this run's input/interim/
-# output folders (requirements §2.4 output_root; contracts.md §1a). Every
-# script/skill downstream should resolve run paths as f"{paths.root}/input/
-# {run_id}/..." etc. instead of assuming the current working directory —
-# this is what makes a run resumable in a later session even if that
-# session's cwd differs from the one that created the run.
-trigger = {
-    "run_id": run_id,
-    "raw_subject": raw_subject,
-    "slug": slug,
-    "timestamp": ts,
-    "controls": controls,
-    "paths": {"root": root_dir},
-}
-
-state = {
-    "schema_version": 1,
-    "run_id": run_id,
-    "date": os.environ["AW_DATE"],
-    "sequence": os.environ["AW_SEQ"],
-    "slug": slug,
-    "raw_subject": raw_subject,
-    "created_at": ts,
-    "updated_at": ts,
-    "status": "awaiting-scope",
-    "scope": {
-        "template_completed": False,
-        "missing_mandatory": ["audience", "purpose"],
-        "reconciled": None,
-    },
-    "controls": controls,
-    "paths": {"root": root_dir},
-    "current_step": 0,
-    "hypothesis": {"text": None, "hardened_to_thesis": False},
-    "research": {"claims": [], "open_questions": []},
-    "references": [],
-    "placeholders": [],
-    "gates": {
-        "step-1": {"fails": 0},
-        "step-2": {"fails": 0},
-        "step-3": {"fails": 0},
-        "step-4": {"fails": 0},
-        "step-5": {"fails": 0},
-        "step-6": {"fails": 0},
-        "step-7": {"fails": 0},
-    },
-    "escalation_history": [],
-    "originality": {
-        "checked": False,
-        "detection_guarantee": None,
-        "corpus": [],
-        "flags": [],
-    },
-    "adversarial": {"rounds": 0, "ledger": []},
-}
+import json, os, tempfile
 
 def write_atomic(path, obj):
     d = os.path.dirname(path) or "."
@@ -372,12 +200,23 @@ def write_atomic(path, obj):
             pass
         raise
 
-write_atomic(os.environ["AW_TRIGGER_PATH"], trigger)
-write_atomic(os.environ["AW_STATE_PATH"], state)
+brief = {
+    "run_id": os.environ["AW_RUN_ID"],
+    "root": os.environ["AW_ROOT_DIR"],
+    "raw_topic": os.environ["AW_RAW_TOPIC"],
+    "created_at": os.environ["AW_TIMESTAMP"],
+    "updated_at": os.environ["AW_TIMESTAMP"],
+    "status": "drafting",
+    "audience": os.environ["AW_B_AUDIENCE"] or None,
+    "intention": os.environ["AW_B_INTENTION"] or None,
+    "angle": os.environ["AW_B_ANGLE"] or None,
+    "points_to_cover": os.environ["AW_B_POINTS"] or None,
+    "post_category": os.environ["AW_B_POST_CATEGORY"] or None,
+    "tone": os.environ["AW_B_TONE"] or None,
+    "length": os.environ["AW_B_LENGTH"] or None,
+}
+write_atomic(os.environ["AW_BRIEF_PATH"], brief)
 PY
 
-# ---------------------------------------------------------------------------
-# Success.
-# ---------------------------------------------------------------------------
 printf 'RUN %s\n' "$RUN_ID"
 exit 0

@@ -1,183 +1,82 @@
 # Article Writer
 
-A Claude Code plugin that turns a one-line subject into a publish-ready article by driving
-it through an **8-step, gated workflow** with **deterministic loop caps** and an
-**adversarial fact-check** review. Built as a batch tool: every run is isolated into its
-own numbered folder set.
+A Claude Code plugin for writing your own blog posts. You give it a topic — plus
+whatever of audience, intention, angle, and points to cover you already have in mind —
+and it researches the topic, checks the facts it's going to state, drafts it, and then
+iterates with you conversationally until you're happy. When you say it's good, it
+writes the final, formatted article into one folder, ready to drop into your site.
 
-Rigor scales to what you're actually writing. Pick a **post category** at Step 1 (or set
-it in the scope template) and the run adjusts: `musings` / `photos` / `travel` skip
-external research and adversarial fact-checking entirely (there's nothing to
-independently verify in a personal account); `learnings` / `movies` / `books` / `mba`
-spot-check only the handful of hard, named facts a piece states, skipping full
-triangulation; `deep-dive` keeps the original full pipeline for reported, argumentative
-work. See *Post category & rigor tier* below.
+There are no gates, caps, or adversarial-review loops. An earlier version of this
+plugin had all of that (a deterministic 8-step pipeline with per-gate caps and an
+independent fact-checking subagent) — it was built for deeply-reported, argumentative
+journalism, and it made writing a movie review or a trip log take 45+ minutes and cost
+six figures of tokens for no real benefit. It was removed. See `CHANGELOG.md` if you're
+curious what used to be here.
 
-**Docs:** [`docs/requirements.md`](docs/requirements.md) (full spec) ·
-[`docs/contracts.md`](docs/contracts.md) (state/interface contracts) ·
-[`docs/architecture-decision.md`](docs/architecture-decision.md) (why gating is split the
-way it is, and the honest limit of that guarantee) ·
-[`docs/high-level.html`](docs/high-level.html) (workflow diagram).
-
-## Core design: probabilistic vs. deterministic split
-
-- **Judgement, writing, research, review** live in **skills and agents** — Claude does them.
-- **Loop caps, gate enforcement, folder allocation, state** live in **hooks and scripts** —
-  the harness does them. A model can't be trusted to reliably stop its own loop, so the
-  bound is enforced outside the model.
-
-## Usage (two-phase)
+## Usage
 
 ```
-/write-article <subject>     # Phase A: set up a run, drop a scope template — does NOT write
-/write-article continue      # Phase B: resume a run from its current step and execute
+/write-article <topic, plus any of: audience, intention, angle, points to cover>
+/write-article continue     # resume a draft you didn't finish
 ```
 
-Phase A allocates the run and stops; you complete the scope template (mandatory: audience,
-purpose), then Phase B reconciles scope and runs Steps 1–8. Runs live under the **run
-root** — the current working directory by default, or a persistent path you configure via
-the `output_root` control (see *Controls* below) — in `input/` (commission), `interim/`
-(WIP + state), `output/` (deliverables), each with a per-run subfolder named
-`YYYYMMDD-NNNNN-<slug>`.
+Say as much or as little as you want. At minimum you need a topic; if you don't give an
+audience or intention, it'll ask once, briefly, and otherwise just proceed with sensible
+defaults and tell you what it assumed. From there:
 
-## The 8 steps
+1. **Research.** It reads up on the topic and checks the specific facts the piece is
+   going to state — scaled to what the piece actually needs. A personal reflection
+   (a musing, a trip log, a photo caption) needs little or none of this; a movie/book
+   take needs a couple of facts checked; anything more involved gets a fuller pass.
+2. **Draft.** It writes a complete draft and shows you the whole thing.
+3. **Iterate.** You react to it in plain conversation — "cut the second paragraph,"
+   "make the ending less neat," whatever — and it revises and shows you the result.
+   Keep going as long as you want. This conversation *is* the quality control; there's
+   no separate review step you have to pass.
+4. **Publish.** When you say it's good, it writes:
+   - `scope.md` — a short, readable record of the brief (topic, audience, intention,
+     angle, points to cover).
+   - `article.md` — the final article, with YAML frontmatter matching your site's
+     format (`title`, `category`, `date`, `excerpt`, `readTime`, `featured`,
+     `coverImage`, `published`, `layout`, `imageAlt`, `image`) and the body underneath.
 
-1. **Define scope** — human-agent handshake; provisional hypothesis.
-2. **Research deeply** — primary sources, counter-evidence, claim→source→tier.
-3. **Find structure** — hypothesis hardens into thesis; through-line + outline.
-4. **Draft fast and ugly** — completeness only; `[check stat]` placeholders.
-5. **Revise in passes** — verification → **originality & attribution** → structural → paragraph → sentence → proof.
-6. **Sharpen open & close** — intro rewritten last; promise matches payoff.
-7. **Rest, then second eyes** — cold read; signal vs. noise (run is resumable for real rest).
-8. **Adversarial review** — isolated agent re-sources claims independently and classifies them.
-
-Steps 1–7 each end in a lightweight QA gate (cap 2 → escalate upstream). Step 8 is the one
-heavyweight gate: min 1 / max 3 reviews for a deep-dive post, max 2 for a light-check post
-(movies/books/learnings/mba) — and skipped entirely for a reflective post (musings/
-photos/travel), which has nothing externally-checkable to review. See *Post category &
-rigor tier*.
+   Both land in one folder: `<output_root>/<YYYYMMDD-NNNNN-slug>/`. `published` always
+   defaults to `false` and image fields default to a `TODO-` placeholder if you didn't
+   have one ready — check both before it goes live.
 
 ## Components
 
 ```
 article-writer/
-├── .claude-plugin/plugin.json        # manifest + userConfig controls (§2.4)
-├── commands/write-article.md         # two-phase entry & routing
-├── skills/
-│   ├── orchestrator/                 # drives Steps 1–8, obeys the scripts
-│   ├── step-1-scope … step-7-second-eyes
-├── agents/adversarial-reviewer.md    # Step 8, isolated, re-sources independently
-├── hooks/hooks.json                  # PreToolUse guard on deliverable writes
-├── scripts/                          # the deterministic core (see below)
-├── templates/scope-template.md       # the human's scope form
-├── docs/                             # spec, contracts, architecture decision, diagram
-└── tests/                            # runnable verification harnesses
+├── .claude-plugin/plugin.json   # manifest: output_root + a few soft defaults
+├── commands/write-article.md    # the whole flow: brief -> research -> draft -> iterate -> publish
+├── scripts/
+│   ├── init-run.sh              # allocate one run folder, write brief.json
+│   └── publish.sh                # assemble scope.md + article.md (frontmatter + body)
+└── docs/requirements.md          # what this plugin does and doesn't do
 ```
 
-### What this plugin runs on your machine
-
-Installing it registers **one hook**: a `PreToolUse` matcher on
-`Write|Edit|MultiEdit|NotebookEdit` that runs [`scripts/gate-guard.sh`](scripts/gate-guard.sh)
-(15s timeout). On every file write, that script reads the run's `state.json` and denies
-writes into `output/<run>/` unless the pipeline legitimately reached the publish stage. It
-is the enforcement mechanism described above, and it is ~100 lines of reviewable bash. It
-reads state and writes nothing; writes outside `output/` are passed straight through.
-
-No script in this repo makes a network call, spawns a background process, or writes outside
-the run folders under the resolved run root (the current working directory by default, or
-the `output_root` you configure).
-
-### Deterministic scripts (the enforcement core)
-| Script | Role |
-|---|---|
-| `init-run.sh` | Resolve the run root (`output_root` or cwd), allocate `YYYYMMDD-NNNNN`, derive slug, create the 3 folders, dedup-check, init state. |
-| `gate-counter.sh` | Sole mutator of per-gate counters; escalates at the cap per the §5.1 routing table. |
-| `gate-guard.sh` | `PreToolUse` backstop — blocks deliverable writes to `output/` before the publish stage. |
-| `review-loop.sh` | Step 8 loop control: round counting, min/max bound, severity routing. |
-| `make-manifest.sh` | Emits article (.docx) + sources + references + run manifest (self-guards on status). |
-| `source-check.sh` | Validates load-bearing claims rest on a whitelisted, sufficiently-high tier (§6). |
-| `originality-check.sh` | Step 5 plagiarism defense: `scan` finds n-gram overlap vs captured source text; `verify` confirms each flagged passage's ethical remedy (quote-and-attribute / rewrite / attribute / remove) actually landed in the draft before the gate may pass. |
-| `format-references.sh` | Renders structured `references[]` into the chosen citation style (in-text + bibliography). |
-| `to-docx.sh` | Converts the final Markdown article to `.docx` (pandoc, python-docx fallback). |
-
-All scripts are self-contained, use `python3` for JSON (no `jq` dependency), and make
-**no network calls** — the only external capability the plugin uses is the declared
-independent source access (web search/fetch) in Steps 2 and 8.
-
-## Post category & rigor tier
-
-`post_category` (asked at Step 1 if you leave it blank — in `userConfig` or the scope
-template) is what actually controls run time and token cost, because it decides how much
-of Steps 2 and 8 run at all:
-
-| You pick | Tier | Step 2 (research) | Step 8 (adversarial review) |
-|---|---|---|---|
-| `musings`, `photos`, `travel` | reflective | skipped — a personal-context capture pass instead | **skipped entirely** — no reviewer dispatch at all; nothing to fact-check in a personal account |
-| `learnings`, `movies`, `books`, `mba` | light-check | spot-checks only the named hard facts (film year/director, book author, etc.) | runs, cap 2, but only attacks that same class of named facts (single source is enough — no piling on) |
-| `deep-dive` | journalistic | full territory-mapping, counter-evidence hunting, source triangulation | full scrutiny, whatever `adversarial_cap` is configured to (default 3) |
-
-The manifest records `post_category`/`rigor_tier`/`research_mode` and is explicit that a
-reflective/light-check run **skipped research by design**, not because source access was
-unavailable — see *Honest limits*.
+Everything else you may see in this repo (`skills/`, `agents/`, `templates/`,
+`config/`, several other `scripts/*.sh`) is left over from the removed gated pipeline —
+each of those files now just prints a deprecation notice or says so in a comment, and
+none of them are called by anything. They're safe to delete; see `CHANGELOG.md` for the
+full list. They're still here only because deleting files wasn't possible in the
+session that did this rewrite.
 
 ## Controls
 
-Every tuning knob (audience, angle, length, tone, source policy, quality threshold,
-per-gate cap, adversarial cap, escalation routing, post category) has a default and is
-overridable via the manifest `userConfig` or per run. See `plugin.json`. The per-gate cap
-and the deep-dive adversarial cap were softened to **2** and **3** (from 3 and 5).
+`output_root` — absolute, persistent folder where every run lives (default: none, uses
+the current working directory). Set this to a synced folder (OneDrive, Dropbox, etc.) so
+runs survive a temporary/sandboxed session.
 
-**Runs root (`output_root`).** By default, runs are stored under `input/`, `interim/`,
-`output/` in whatever directory Claude was launched from — which can be a temporary or
-sandboxed session directory that disappears afterward. Set `output_root` to an absolute,
-persistent path (e.g. a OneDrive- or Dropbox-synced folder) to keep every run there
-instead. `init-run.sh` creates the directory if needed and records it as `paths.root` in
-that run's `trigger.json`/`state.json`; the root a run was *created* with is what it keeps
-for its lifetime, even if `output_root` is changed later or a later session's working
-directory differs. Runs created before this control existed keep working unchanged
-(resolved as "root = current working directory").
-
-## Verification
-
-Deterministic behaviour is covered by runnable harnesses:
-
-```bash
-bash tests/phase1-core.sh        # allocation, per-day reset, slug halt, cap-3 escalation
-bash tests/phase2-guard.sh       # PreToolUse guard blocks premature deliverable writes
-bash tests/phase4-review.sh      # adversarial loop routing/cap/min, manifest emission
-bash tests/phase-originality.sh  # Step 5 plagiarism scan + remedy-landed verification
-bash tests/phase6-refs-docx.sh   # citation formatting, docx conversion
-bash tests/phase7-output-root.sh # output_root: custom root, dedup/sequence scoping, backward compat
-bash tests/acceptance.sh         # every requirements §10 acceptance criterion
-```
-
-## Honest limits
-
-The plugin verifies **external truth** only where it has independent source access;
-otherwise it checks **internal consistency** only, and the run manifest says which was
-obtained — it never implies fact-checking it did not perform. All loops are bounded
-(per-gate 2, adversarial 3 for deep-dive / 2 for light-check / **skipped entirely** for
-reflective), enforced by scripts, not model self-report.
-
-A `reflective` run's manifest states plainly that Step 8 (and Step 2's research) were
-**skipped by design** for that post category, not attempted-and-unavailable — those are
-different claims, and conflating them would be exactly the kind of overclaiming this
-plugin exists to avoid. A `light-check` run's manifest is equally explicit that only a
-handful of named facts were spot-checked, not the whole piece.
-
-**Originality:** the Step 5 originality pass detects copying by comparing the draft against
-the source excerpts the run captured (and independent search where available); with no
-captured source text it can only read the draft against itself and records
-`internal-only`, never a false "clean". The deterministic verifier confirms an ethical
-remedy (quote-and-attribute / rewrite / attribute / remove) actually landed in the draft
-text — the model cannot clear the gate by asserting a passage is fixed — but it runs at
-Step 5, so the intros/closes that Steps 6–7 rewrite afterward warrant a final read (the
-manifest flags this). It is a plagiarism *defense*, not a certified originality score.
+`audience` / `tone` / `length` / `post_category` — soft fallbacks used only when you
+don't specify them for a given run. None of these are enforced; they're just defaults
+the agent uses unless you say otherwise.
 
 ## Installation
 
-**Requirements:** Claude Code, `bash`, `python3`. Optional: `pandoc` or `python-docx` for
-`.docx` output (without either, the run keeps `article.md` and says so).
+**Requirements:** Claude Code, `bash`, `python3` (or `python`/`py -3` — the scripts
+fall back automatically).
 
 From GitHub (the canonical marketplace location):
 
@@ -186,25 +85,20 @@ From GitHub (the canonical marketplace location):
 /plugin install article-writer@article-writer
 ```
 
-Already have it installed from a local marketplace source instead? Point it at GitHub
-without losing your run history: `/plugin marketplace remove article-writer` (the old
-local source), then run the two commands above. Runs live under `output_root`/the
-working directory, not inside the plugin's own install path, so switching marketplace
-sources doesn't touch them.
+To pick up new commits after the initial install: `/plugin marketplace update
+article-writer` then `/reload-plugins` (or restart Claude Code).
 
-To pick up new commits after the initial install, run `/plugin marketplace update
-article-writer` followed by `/reload-plugins` (or restart Claude Code) — same as any
-other update.
+For local development: clone the repo, run `/plugin`, add the folder as a local
+marketplace source, and enable `article-writer`.
 
-For local development instead, clone the repo, then run `/plugin`, add the folder as a
-local marketplace source, and enable `article-writer`.
+## Honest limits
 
-## Contributing
-
-Deterministic behaviour is contract-first: [`docs/contracts.md`](docs/contracts.md) is
-authoritative for `state.json` and the gate interfaces, and every script cites the spec
-section it implements. Changes to the enforcement core should come with a test in
-`tests/` — the existing harnesses cover 136 checks and are expected to stay green.
+This is a writing assistant, not a fact-checking service. It checks the concrete claims
+a piece states where it reasonably can, using web search, but there's no independent
+adversarial review step anymore — the human reading the draft and giving feedback is
+the check. For a personal reflection with nothing externally checkable in it, it won't
+do external research at all, and it'll say so rather than imply verification it didn't
+perform.
 
 ## License
 

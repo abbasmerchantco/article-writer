@@ -1,8 +1,7 @@
-# Run artifacts. The plugin allocates these in the *current working directory*, so
-# testing it from the repo root drops real runs (drafts, research, state.json) here.
-/input/
-/interim/
-/output/
+# Run artifacts. The plugin allocates one flat folder per run (YYYYMMDD-NNNNN-slug) in
+# the *current working directory* unless output_root is set, so testing it from the
+# repo root drops real runs (scope.md, article.md, .article-writer/) here.
+/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-*/
 
 # Local Claude Code state (machine-specific permissions, not project config)
 .claude/settings.local.json

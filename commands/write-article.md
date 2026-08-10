@@ -1,80 +1,44 @@
 ---
 name: write-article
 description: >-
-  Two-phase entry point for the article-writer 8-step workflow. Phase A
-  (`/write-article <subject>`) sets up an isolated run and drops a scope
-  template for the human to complete — it does NOT begin writing. Phase B
-  (`/write-article continue`) resumes a run from its current step and executes
-  the workflow. Use to commission a new article or to resume an in-progress one.
-argument-hint: "<subject> | continue"
+  Entry point for article-writer. `/write-article <topic and any brief details>`
+  gathers the brief (audience, intention, angle, points to cover), researches the
+  topic, writes a draft, and then iterates on your feedback conversationally until
+  you're happy — at which point it writes the final formatted article (plus a scope
+  record) into one folder. `/write-article continue` resumes a draft in progress.
+argument-hint: "<topic + any brief details> | continue"
 disable-model-invocation: true
-allowed-tools: Bash, Read, Write, AskUserQuestion
+allowed-tools: Bash, Read, Write, Edit, WebSearch, WebFetch, AskUserQuestion
 ---
 
-# `/write-article` — two-phase run entry & routing
+# `/write-article` — one simple flow: brief → research → draft → iterate → publish
 
-You are the **entry point and router** for the `article-writer` workflow. Your
-only jobs are: set up a run (Phase A), or select and resume a run and hand off
-to the right skill (Phase B). **You do not perform any of the 8 workflow
-steps yourself** — the step skills and the orchestrator do that.
+You are writing an article **with** the human, conversationally. There are no gates,
+no caps, no adversarial review, no rigid step sequence to obey — those existed in an
+earlier version of this plugin and were deliberately removed (see `CHANGELOG.md`)
+because they made a personal-blog writing tool slow and heavy for what it actually
+needs to do. The only real quality control here is **the human's own feedback**, given
+in plain conversation, which you act on until they're happy.
 
-Runs live under a **run root**, in three sibling folders: `input/`, `interim/`,
-`output/`. Each run has an identically-named subfolder in all three:
-`input/<run_id>/`, `interim/<run_id>/`, `output/<run_id>/`. By default the run
-root is the **current working directory** (where Claude was launched) — but it
-is overridable (see below), because that directory can be an ephemeral
-session/sandbox path that disappears, which loses runs.
+## Resolving the run root
 
-Deterministic scripts under `${CLAUDE_PLUGIN_ROOT}/scripts/` own folder
-allocation, the state file, and gate counters. Never hand-edit `state.json`
-counters — the scripts are the sole mutator.
+Do this once, first. This plugin's configured `output_root` value is:
 
-## Resolving the run root (requirements §2.4 `output_root`)
+```
+${user_config.output_root}
+```
 
-Do this **once, first**, before Phase A or Phase B — every path in this file
-and in the skills it hands off to is relative to the resolved root, not
-blindly to wherever Claude happens to be running from.
+Claude Code substitutes the real configured value into that line before you ever see
+this file. Export it so `init-run.sh`/`publish.sh` resolve the same root:
 
-1. This plugin's configured `output_root` value is:
-   ```
-   ${user_config.output_root}
-   ```
-   Claude Code substitutes the real configured value (or its manifest default) into
-   that line **before you ever see this file** — by the time you read this, it is a
-   literal string (e.g. an absolute OneDrive path), not a template. Do not try to
-   "look up" `output_root` some other way (there is no separate lookup — this
-   substitution *is* the mechanism, per the userConfig contract: non-sensitive
-   `userConfig` values are substituted directly into skill/command content). If what
-   you see above is still the literal text `${user_config.output_root}` with the
-   braces intact, substitution did not happen (e.g. a very old Claude Code build) —
-   treat it as blank/unset and fall back to the current working directory rather than
-   passing the literal placeholder string anywhere.
-2. Export the value you just read so every script invocation resolves the same way
-   (substitute the ACTUAL string from step 1 for `<value>` — do not paste the literal
-   token `${user_config.output_root}` into a shell command; either it was already
-   substituted into a real path in step 1, or it wasn't and you're using the cwd
-   fallback):
-   ```
-   export AW_OUTPUT_ROOT="<value>"
-   ```
-   (blank/unset → `export AW_OUTPUT_ROOT=""`, which `init-run.sh` treats as "use cwd").
-   `init-run.sh` treats an empty value as "use cwd," creates the directory if
-   it does not exist, and always resolves it to an **absolute** path — which
-   it then records in `trigger.json`/`state.json` as `paths.root`. From the
-   moment a run exists, `paths.root` in that run's own `state.json` is the
-   authoritative root for that run — prefer it over re-deriving
-   `AW_OUTPUT_ROOT` yourself, because a run keeps the root it was *created*
-   with even if `output_root` is changed later or a future session's cwd
-   differs.
-3. Wherever this file (or `orchestrator`, or any `step-N` skill) says
-   `input/<run_id>/...`, `interim/<run_id>/...`, or `output/<run_id>/...`,
-   read that as `<root>/input/<run_id>/...` etc.
-4. **Backward compatibility:** a run created before this control existed (or
-   in a session where it was left unset) lives directly under the plain
-   current working directory with no `paths.root` field. When scanning for
-   runs (Phase B, resumability) or resolving `--reuse`, and `AW_OUTPUT_ROOT`
-   differs from the plain cwd, check **both** locations rather than assuming
-   every run lives under the new root.
+```
+export AW_OUTPUT_ROOT="<value>"
+```
+
+(blank/unset → `AW_OUTPUT_ROOT=""`, which `init-run.sh` treats as "use the current
+working directory"). If what you see above is still the literal text
+`${user_config.output_root}` with braces intact, substitution didn't happen — treat it
+as blank rather than passing that placeholder string anywhere.
 
 The argument you were invoked with is:
 
@@ -82,136 +46,147 @@ The argument you were invoked with is:
 $ARGUMENTS
 ```
 
-**Dispatch on the argument:**
-- If the argument is exactly `continue` (case-insensitive, no other words) →
-  run **Phase B** below.
-- Otherwise, treat the **entire argument string, verbatim** as the article
-  subject → run **Phase A** below.
-- If the argument is empty → tell the user the two forms
-  (`/write-article <subject>` to start, `/write-article continue` to resume)
-  and stop.
+- If it is exactly `continue` (case-insensitive, no other words) → go to **Resuming a
+  draft** below.
+- If it is empty → ask the user what they'd like to write about (topic is the one
+  thing you can't proceed without) and stop.
+- Otherwise → treat the whole argument as the **topic and whatever brief details the
+  human chose to include**, and go to **Starting a new run** below.
 
 ---
 
-## Phase A — `/write-article <subject>` (SETUP ONLY — MUST NOT begin writing)
+## Starting a new run
 
-> Acceptance criterion: Phase A **creates folders and a scope template but does
-> not begin writing.** Only Phase B executes the workflow. Do **not** run Step 1
-> reconciliation, research, drafting, or any step work here.
+### 1. Extract the brief from what they gave you
 
-1. **Capture the commission.** Record the raw subject **verbatim**, exactly as
-   typed after the command (do not trim, reword, or normalize it — the slug is
-   derived by the script; the raw subject is preserved), plus the current
-   timestamp.
+Read the argument as natural language, not a form with required syntax. Pull out
+whichever of these the human already told you, in whatever order or phrasing they used:
 
-2. **Allocate the run** by invoking the init script (with `AW_OUTPUT_ROOT`
-   already exported per *Resolving the run root* above — the script reads it
-   from the environment). This is the only thing that creates folders, writes
-   the trigger log, and initializes state:
+- **topic** — required; it's why they ran the command.
+- **audience** — who this is for.
+- **intention / purpose** — what they want the reader to take away, or just "why write
+  this."
+- **angle** — a preferred lens or stance, if they have one.
+- **points to cover** — anything that has to appear.
+- **post category** — if it's for a specific section of their blog (e.g. musings,
+  learnings, movies, books, photos, travel, mba) — this only flavors how much research
+  you do (see step 3), it's not a rigid enum.
+- **tone / length** — if mentioned.
 
+**Don't hard-stop on anything missing.** If audience and intention are *both* absent,
+ask one short, friendly question for those two (they shape everything downstream more
+than the others) — a single message, not a form. If only some details are missing,
+just proceed with reasonable defaults and say what you assumed, e.g. "I'll write this
+for general readers of your blog unless you tell me otherwise." The human can always
+correct you once they see the draft — that's what the feedback loop is for.
+
+### 2. Allocate the run folder
+
+```
+${CLAUDE_PLUGIN_ROOT}/scripts/init-run.sh "<topic>"
+```
+
+with the brief exported first:
+
+```
+export AW_AUDIENCE="<audience or blank>" AW_INTENTION="<intention or blank>" \
+       AW_ANGLE="<angle or blank>" AW_POINTS="<points to cover or blank>" \
+       AW_POST_CATEGORY="<post category or blank>" AW_TONE="<tone or blank>" \
+       AW_LENGTH="<length or blank>"
+```
+
+Interpret stdout + exit code (diagnostics go to stderr):
+
+- **`RUN <run_id>` (exit 0)** — created. Continue below with this `<run_id>`.
+- **`DUPLICATE_MATCH <run_id>` (exit 2)** — a run with a matching slug already exists.
+  Tell the user and ask: **reuse** it (`init-run.sh --reuse <run_id>`, then resume it as
+  in *Resuming a draft*) / **start a new one anyway**
+  (`init-run.sh --force-new "<topic>"`) / **cancel**.
+- **Any other exit** — report the stderr message; don't fabricate a run.
+
+The run now lives at `<root>/<run_id>/` with a small internal `.article-writer/`
+subfolder holding `brief.json`. You'll write the draft there as you go; nothing
+user-facing exists yet until you publish.
+
+### 3. Research — scaled to what this piece actually needs
+
+The goal is to understand the topic well enough to write it accurately, not to produce
+an academic literature review. Use `WebSearch`/`WebFetch` to:
+
+- get enough context on the topic to write about it competently;
+- check the handful of concrete, checkable facts the piece will actually state (names,
+  dates, figures, claims) — prefer primary/reputable sources for anything you're
+  stating as settled fact; if you can't confirm something, say so plainly in the draft
+  (a bracketed note) or ask the human, rather than inventing it;
+- skim what else has been written about the topic, if that helps you say something
+  sharper or avoid restating the obvious.
+
+Scale effort to the post category if one was given: a personal reflection (musings,
+photos, travel, a trip log) usually needs little to no outside research — it's the
+human's own account. An opinion/review piece (movies, books, learnings, mba) usually
+needs a handful of facts checked, not a deep dive. Anything else, or an explicitly
+research-heavy ask, gets a fuller pass. Use judgement; don't over-research a short
+personal post just because the tools are available.
+
+### 4. Draft
+
+Write a complete draft that reflects the brief and what you learned. Save it to:
+
+```
+<root>/<run_id>/.article-writer/draft.md
+```
+
+Then **show the full draft in your response** — not a summary of it — so the human can
+react to the actual text.
+
+### 5. Iterate — this is the real quality control
+
+From here, just keep talking. Every message the human sends about this draft is
+feedback: apply it (edit `.article-writer/draft.md`), show the result, and keep going.
+There is no fixed number of passes and no formal gate to satisfy — you're done with a
+round when they say so. If feedback is ambiguous, ask; if it's clear, just make the
+change and show it rather than narrating what you're about to do.
+
+### 6. Publish — when they say it's good
+
+Watch for a clear signal that they're happy (e.g. "looks good," "publish it," "that's
+the one," "ship it"). When you get one:
+
+1. Decide `title` and a short `excerpt` (1–2 sentences) from the finished draft. Ask
+   the human only if you're genuinely unsure. Default `featured: false` and
+   `published: false` unless they say otherwise (they can flip `published` in their own
+   CMS once they've done a final check).
+2. If they have a cover image ready, ask for its path/URL and alt text; otherwise leave
+   it — `publish.sh` fills a `TODO-` placeholder they can swap in later. Don't hold up
+   publishing to chase down an image.
+3. Write these to `<root>/<run_id>/.article-writer/frontmatter.json`:
+   ```json
+   { "title": "...", "excerpt": "...", "featured": false, "published": false,
+     "coverImage": "...", "image": "...", "imageAlt": "..." }
    ```
-   ${CLAUDE_PLUGIN_ROOT}/scripts/init-run.sh "<raw subject>"
+   (omit any of `coverImage`/`image`/`imageAlt` you don't have — `publish.sh` defaults
+   them).
+4. Run:
    ```
-
-   Interpret its **stdout + exit code** (diagnostics go to stderr):
-
-   - **`RUN <run_id>` (exit 0)** — the run was created. Proceed to step 3 with
-     this `<run_id>`.
-
-   - **`DUPLICATE_MATCH <run_id>` (exit 2)** — a run with a matching **slug**
-     already exists (a trivially-reworded subject still collides). **STOP and
-     ask the user** (show the matched `<run_id>`), offering exactly three
-     choices:
-       - **Reuse** the existing run → re-invoke
-         `${CLAUDE_PLUGIN_ROOT}/scripts/init-run.sh --reuse <run_id>` and use the
-         returned run.
-       - **Create a new run** anyway → re-invoke
-         `${CLAUDE_PLUGIN_ROOT}/scripts/init-run.sh --force-new "<raw subject>"`
-         and use the returned `RUN <run_id>`.
-       - **Cancel** → abort; create nothing.
-     Do not guess the user's intent — a slug collision must halt and prompt.
-
-   - **Any other exit (exit 1 / usage error)** — report the stderr message and
-     stop; do not fabricate a run.
-
-3. **Drop the blank scope template.** Once a run exists, write the blank scope
-   template to:
-
+   ${CLAUDE_PLUGIN_ROOT}/scripts/publish.sh <run_id> <root>
    ```
-   <root>/input/<run_id>/scope-template.md
-   ```
-
-   where `<root>` is this run's `paths.root` from the `state.json` that
-   `init-run.sh` just wrote (§ *Resolving the run root*). (The template's
-   content is authored by the `input-scope-template` task; your job in Phase A
-   is only to ensure a blank copy lands at that exact path so the human has a
-   form to complete.)
-
-4. **Confirm state.** `init-run.sh` has already initialized
-   `<root>/interim/<run_id>/state.json` with `status: awaiting-scope`. Verify
-   that is the case; do not advance the status.
-
-5. **STOP and hand back to the human.** Tell them **exactly**:
-   - the run id,
-   - the **full, absolute path** of the scope template they must complete
-     (`<root>/input/<run_id>/scope-template.md` — spell out the real `<root>`
-     value, not the placeholder, so they know exactly which folder to open;
-     this matters more than before now that `<root>` may not be their
-     terminal's cwd), noting the two **mandatory** fields (audience / target
-     reader, and purpose / desired takeaway) that will hard-stop resumption if
-     left blank,
-   - that they resume with **`/write-article continue`** once it is filled in.
-
-   Do **not** proceed to Step 1 or any writing. Phase A ends here.
+   This writes `<root>/<run_id>/scope.md` (a readable record of the brief) and
+   `<root>/<run_id>/article.md` (the frontmatter + body, ready for the site) — the only
+   two files the human needs to see.
+5. Tell the human the folder path, and flag anything you defaulted (placeholder image,
+   assumed audience, etc.) so they know what to check before it goes live.
 
 ---
 
-## Phase B — `/write-article continue` (general resume verb — NOT scope-specific)
+## Resuming a draft (`/write-article continue`)
 
-> Acceptance criteria: `continue` resumes from the run's **current step**
-> (general resume — could be `awaiting-scope`, or mid-Step-5, etc.); it **asks
-> which run** when more than one is resumable; and a **blank mandatory scope
-> field hard-stops** it, leaving the run at `awaiting-scope`.
+Scan `<root>/*/.article-writer/brief.json` for runs whose `status` is `"drafting"`
+(i.e. not yet `"published"`).
 
-1. **Find resumable runs.** Scan `<root>/interim/*/state.json` (per §
-   *Resolving the run root* — `<root>` from the resolved `output_root`
-   control). If `<root>` differs from the plain current working directory,
-   **also** scan `interim/*/state.json` there, so runs created before this
-   control was set (or in a session without it) still surface — a run found
-   this way has its own `paths.root` recorded inside it, which is what you
-   use from then on, not the currently-resolved `<root>`. A run is
-   **resumable** when its `status` is anything from `awaiting-scope` through
-   an in-progress step (`step-1` … `step-8`) — i.e. **anything except
-   `published`**.
-   - **0 resumable** → tell the user there are no in-progress runs, and suggest
-     starting one with `/write-article <subject>`. Stop.
-   - **exactly 1 resumable** → select it and continue.
-   - **more than 1 resumable** → **list them** (for each: `run_id`, `status`,
-     and `raw_subject` from state) and **ask the user which to resume.** Do not
-     pick one silently.
-
-2. **Resume from the current step.** Read the selected run's `state.json`.
-   Resume **from whatever step `status` records** — this is a general resume,
-   not a scope-only continuation.
-
-3. **If `status` is `awaiting-scope`:** read the completed
-   `<root>/input/<run_id>/scope-template.md`, where `<root>` is this run's own
-   `state.json.paths.root` (fall back to the plain current working directory
-   if that field is absent — a pre-`output_root` run).
-   - **MANDATORY-FIELD HARD-STOP:** if **either** mandatory field is blank —
-     **audience / target reader**, or **purpose / desired takeaway** — do **not**
-     proceed, and do **not** guess or fill them in. List **exactly which**
-     mandatory field(s) are missing, tell the user to complete them in the
-     template, and **STOP**, leaving the run at `awaiting-scope`.
-   - If both mandatory fields are present, hand off to the **`step-1-scope`**
-     skill (via the orchestrator) to run the Step 1 human-agent reconciliation.
-     Do not perform the reconciliation yourself.
-
-4. **From Step 1 onward, defer to the orchestrator.** For any run already past
-   scope (or once the scope hard-stop clears), hand control to the
-   **`orchestrator`** skill, which runs Steps 1–8, manages `state.json`, and
-   enforces the gates via the deterministic scripts. Your responsibility is
-   **entry and routing only** — you do not execute step logic, mutate gate
-   counters, or decide loop continuation. You do not need to pass the root
-   separately: the orchestrator re-reads `state.json` on entry (as always),
-   and this run's own `paths.root` is already in it.
+- **0 found** — say so; suggest starting one with `/write-article <topic>`.
+- **exactly 1** — read its `brief.json` and, if present, `.article-writer/draft.md`.
+  Show the human where things stand (the brief, and the current draft if one exists)
+  and pick the conversation back up from there — ask what they'd like to change, or
+  if there's no draft yet, continue from research/drafting.
+- **more than 1** — list them (topic + created date, from each `brief.json`) and ask
+  which to resume. Don't guess.
