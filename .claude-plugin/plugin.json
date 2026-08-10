@@ -2,8 +2,8 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "article-writer",
   "displayName": "Article Writer",
-  "version": "0.4.3",
-  "description": "Turn a one-line subject into a publish-ready article via an 8-step, gated workflow with deterministic loop caps, a Step-5 plagiarism/attribution pass, and an adversarial fact-check review.",
+  "version": "0.5.0",
+  "description": "Turn a one-line subject into a publish-ready article via an 8-step, gated workflow with deterministic loop caps and a Step-5 plagiarism/attribution pass. Rigor scales to a `post_category` you pick at Step 1: full research + adversarial fact-check for deep-dive pieces, a trimmed spot-check for review/notes-style posts, or no external research/fact-check at all for personal reflective writing.",
   "author": {
     "name": "Uttakarsh Tikku"
   },
@@ -26,6 +26,13 @@
       "description": "Default audience if the scope template leaves it unset. Reshapes scope, vocabulary, and depth.",
       "required": false,
       "default": "general informed reader"
+    },
+    "post_category": {
+      "type": "string",
+      "title": "Post category (rigor tier)",
+      "description": "What kind of post this is; determines how much external research and adversarial fact-checking the run does. One of: musings, photos, travel (reflective tier - no external research, no fact-checking - these are personal accounts, there's nothing to independently verify); learnings, movies, books, mba (light-check tier - only the handful of hard, named facts get spot-checked, e.g. a film's year/director or a book's author; adversarial review is capped low); deep-dive (journalistic tier - the original full pipeline: wide research, counter-evidence hunting, source triangulation, independent adversarial fact-check). Leave blank and Step 1 asks you explicitly. You can also set this per run in the scope template.",
+      "required": false,
+      "default": ""
     },
     "angle": {
       "type": "string",
@@ -65,17 +72,17 @@
     "per_gate_cap": {
       "type": "number",
       "title": "Per-gate iteration cap",
-      "description": "Max retries per QA gate (Steps 1-7) before escalating upstream.",
+      "description": "Max retries per QA gate (Steps 1-7) before escalating upstream. Default softened from the original 3 to 2 - the gates are meant to be lightweight tripwires, not a reason to loop repeatedly.",
       "required": false,
-      "default": 3,
+      "default": 2,
       "min": 1
     },
     "adversarial_cap": {
       "type": "number",
-      "title": "Adversarial review cap (max)",
-      "description": "Upper bound on the Step 8 adversarial review loop.",
+      "title": "Adversarial review cap (max), deep-dive tier",
+      "description": "Upper bound on the Step 8 adversarial review loop for the deep-dive/journalistic post_category. Default softened from the original 5 to 3. The lighter post_category tiers set their own, lower cap automatically at Step 1 (reflective: 1, light-check: 2) - this value only applies when post_category is deep-dive or unset.",
       "required": false,
-      "default": 5,
+      "default": 3,
       "min": 1
     },
     "adversarial_min": {

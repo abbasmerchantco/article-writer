@@ -71,10 +71,37 @@ Each control changes how the same input transforms into output. All have default
 | Tone / voice | neutral, plain | Register and formality |
 | Source policy (whitelist / blacklist) | see §6 | What evidence is admissible |
 | Source-quality threshold | peer-reviewed / reputable only | Minimum tier a load-bearing claim may rest on |
-| Per-gate iteration cap | 3 | Max retries per QA gate before escalation |
-| Adversarial review cap | max 5, min 1 | Bounds the Step 8 review loop |
+| Per-gate iteration cap | 2 (softened from 3) | Max retries per QA gate before escalation |
+| Adversarial review cap | max 3 (softened from 5), min 1 — deep-dive tier only; `post_category` sets a lower cap automatically for lighter tiers, see §2.4a | Bounds the Step 8 review loop |
 | Escalation routing | as specified §5 | Where a capped/failed gate sends the work |
 | Runs root directory (`output_root`) | current working directory | Absolute path where all run folders (`input/`, `interim/`, `output/`) are stored. Lets runs persist in a durable, synced location instead of wherever the agent happened to be launched from — see §3.1a |
+| Post category (`post_category`) / rigor tier | blank — Step 1 asks explicitly | Which of `musings`/`photos`/`travel` (reflective), `learnings`/`movies`/`books`/`mba` (light-check), or `deep-dive` (journalistic) this post is. Scales research depth and the adversarial cap to fit — see §2.4a |
+
+### 2.4a Post category & rigor tier (`post_category`)
+
+The original 8-step pipeline assumes every piece needs primary-source research and an
+independently-fact-checked adversarial review. That is the right amount of rigor for a
+reported, argumentative piece — and badly wrong for a personal blog post that makes no
+externally-checkable claims (a musing, a photo caption, a trip log) or one that makes
+only a handful of trivially-checkable ones (a film's release year, a book's author).
+Forcing every run through the same research/fact-check bar was the dominant source of
+run time and token cost for that kind of writing, and Step 2's exit gate ("key claims
+sourced + counter-evidence found") does not even have a sensible answer when there are
+no claims to source.
+
+`post_category` is resolved once, at Step 1 (§4 Step 1), from a fixed list — never
+guessed, never silently defaulted to the heaviest tier without asking:
+
+| `post_category` | `rigor_tier` | Step 2 behavior | Step 8 adversarial cap |
+|---|---|---|---|
+| `musings`, `photos`, `travel` | `reflective` | Skipped — a personal-context capture pass instead of research; nothing here is an externally-checkable claim | 1 (will virtually always stop clean on round 1 — there is nothing to fact-check) |
+| `learnings`, `movies`, `books`, `mba` | `light-check` | Trimmed to spot-checking only the handful of hard, named facts the piece states (e.g. a film's year/director) — no territory-mapping, no counter-evidence hunting, no multi-source triangulation | 2 |
+| `deep-dive` (or unrecognized/unset) | `journalistic` | Unchanged — the full subprocess in §4 Step 2 | whatever `controls.adversarial_cap` is already configured to (default 3) |
+
+A run's `post_category`/`rigor_tier`/`research_mode` are recorded in `state.controls`
+and surfaced in the manifest (§2.2), and the manifest is explicit that a `reflective`
+or `light-check` run **skipped research by design**, which is a different, honest
+statement from "attempted, source access unavailable" (§2.5, §11).
 
 ### 2.5 External dependency (declared, not hidden)
 Steps 2 and 8 require **independent source access** (web search or an equivalent fact-check capability). This is not an input or a control — it is a **precondition** the plugin needs from its environment. If unavailable, the plugin can only check internal consistency, not external truth, and must say so rather than imply verification it did not perform.
@@ -181,6 +208,10 @@ A human-completed form capturing what only the human knows. Mandatory fields har
 - **Purpose / desired takeaway** — what the reader should believe, understand, or do afterward.
 
 **Optional (agent may propose if blank):**
+- **Post category (rigor tier)** — `musings`/`photos`/`travel` (reflective, no
+  research/fact-check), `learnings`/`movies`/`books`/`mba` (light-check, spot-check
+  only), or `deep-dive` (journalistic, full pipeline). Step 1 asks explicitly if left
+  blank (§2.4a) rather than silently defaulting.
 - **Angle / stance** — a preferred lens, if the human has one.
 - **Length / format target.**
 - **Tone / voice.**
@@ -208,6 +239,12 @@ Each step has: an **entry precondition**, **subprocess actions**, an **exit gate
 - **Outputs:** reconciled scope record, working hypothesis.
 
 ### Step 2 — Research deeply
+- **Rigor tier first:** what follows is the `research_mode: "deep"` subprocess
+  (§2.4a). A `reflective` run (`research_mode: "none"`) skips external research
+  entirely in favor of a personal-context capture pass; a `light-check` run
+  (`research_mode: "spot-check"`) trims this to verifying only the piece's named hard
+  facts. Both lighter modes still pass an exit gate and write `research.*`, just a
+  lighter one than below.
 - **Actions:** map the territory wide-but-shallow first; go to primary sources, tracing claims to their root; actively hunt disconfirming evidence (find the strongest opponent); triangulate across **independent** sources; capture as you go.
 - **Source policy:** obey the whitelist/blacklist and quality threshold in §6.
 - **Stop when:** saturation (new sources stop surprising you); every part of the thesis, including objections, is arguable from evidence; the article's *scope* is covered (not the whole topic).
@@ -378,7 +415,7 @@ The run **state file** (e.g. `interim/<run>/state.json`) is the working memory p
   later session's working directory or a subsequently-edited `output_root` control;
 - **run status** (`awaiting-scope` → in-progress per step → `published`), used by `continue` to resume and to decide resumability;
 - whether the scope template has been completed, and which mandatory fields (if any) are still blank;
-- active control values;
+- active control values, including `post_category`/`rigor_tier`/`research_mode` (§2.4a) once Step 1 resolves them;
 - current step and status;
 - the working hypothesis (and whether it has hardened into a thesis);
 - research notes index (claim → source → tier), and the open-questions list;

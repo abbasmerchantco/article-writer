@@ -103,12 +103,18 @@ originality = {
 }
 
 controls = state.get("controls", {}) or {}
+post_category = controls.get("post_category") or None
+rigor_tier = controls.get("rigor_tier") or None
+research_mode = controls.get("research_mode", "deep")
 manifest = {
     "run_id": run,
     "raw_subject": state.get("raw_subject"),
     "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "status": status,
     "final_verdict": verdict,
+    "post_category": post_category,
+    "rigor_tier": rigor_tier,
+    "research_mode": research_mode,
     "adversarial_rounds": rounds,
     "unresolved_claims": n_unresolved,
     "verification_guarantee": guarantee,
@@ -128,6 +134,17 @@ guar_txt = ("Independent re-sourcing was available — **external truth** was ch
             if guarantee == "external-truth" else
             "Independent source access was NOT available — only **internal consistency** "
             "was checked. This run does NOT constitute external fact verification.")
+tier_txt = (
+    "**%s** (post_category: %s, research_mode: %s) — " % (rigor_tier, post_category, research_mode) +
+    ("no external research or fact-checking was attempted for this run; it was skipped "
+     "BY DESIGN because this is a personal/reflective post, not because source access "
+     "was unavailable." if research_mode == "none" else
+     "only the handful of hard, named facts in the piece were spot-checked; this run did "
+     "not attempt full territory-mapping, counter-evidence hunting, or source "
+     "triangulation." if research_mode == "spot-check" else
+     "the full research + independent fact-check pipeline ran for this run.")
+) if rigor_tier else "_Not recorded on this run (pre-existing before post_category was added)._"
+
 lines = [
     "# Run manifest — %s" % run, "",
     "**Subject:** %s  " % state.get("raw_subject"),
@@ -135,6 +152,7 @@ lines = [
     "**Final verdict:** %s  " % verdict,
     "**Adversarial rounds:** %d  " % rounds,
     "**Unresolved claims at close:** %d  " % n_unresolved, "",
+    "## Post category & rigor tier", tier_txt, "",
     "## Verification guarantee", guar_txt, "",
 ]
 

@@ -217,11 +217,17 @@ LENGTH="${AW_LENGTH:-medium}"
 TONE="${AW_TONE:-neutral, plain}"
 SOURCE_POLICY="${AW_SOURCE_POLICY:-default}"
 SOURCE_QUALITY_THRESHOLD="${AW_SOURCE_QUALITY_THRESHOLD:-peer-reviewed / reputable only}"
-PER_GATE_CAP="${AW_PER_GATE_CAP:-3}"
-ADVERSARIAL_CAP="${AW_ADVERSARIAL_CAP:-5}"
+# Softened baseline (was 3/5) - these are the deep-dive/journalistic-tier defaults.
+# Lighter post_category tiers (reflective, light-check) override adversarial_cap and
+# research_mode explicitly in Step 1, once the human names the post's category
+# (requirements §2.4, §4 Step 1/2).
+PER_GATE_CAP="${AW_PER_GATE_CAP:-2}"
+ADVERSARIAL_CAP="${AW_ADVERSARIAL_CAP:-3}"
 ADVERSARIAL_MIN="${AW_ADVERSARIAL_MIN:-1}"
 ESCALATION_ROUTING="${AW_ESCALATION_ROUTING:-default}"
 PLAGIARISM_NGRAM="${AW_PLAGIARISM_NGRAM:-8}"
+POST_CATEGORY="${AW_POST_CATEGORY:-}"
+RESEARCH_MODE="${AW_RESEARCH_MODE:-deep}"
 
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
@@ -238,7 +244,8 @@ export AW_RUN_ID="$RUN_ID" AW_DATE="$DATE" AW_SEQ="$SEQ" AW_SLUG="$SLUG" \
   AW_C_SOURCE_QUALITY_THRESHOLD="$SOURCE_QUALITY_THRESHOLD" \
   AW_C_PER_GATE_CAP="$PER_GATE_CAP" AW_C_ADVERSARIAL_CAP="$ADVERSARIAL_CAP" \
   AW_C_ADVERSARIAL_MIN="$ADVERSARIAL_MIN" AW_C_ESCALATION_ROUTING="$ESCALATION_ROUTING" \
-  AW_C_PLAGIARISM_NGRAM="$PLAGIARISM_NGRAM"
+  AW_C_PLAGIARISM_NGRAM="$PLAGIARISM_NGRAM" AW_C_POST_CATEGORY="$POST_CATEGORY" \
+  AW_C_RESEARCH_MODE="$RESEARCH_MODE"
 
 python3 - <<'PY'
 import json, os, sys, tempfile
@@ -266,6 +273,14 @@ controls = {
     "adversarial_min": as_int("AW_C_ADVERSARIAL_MIN"),
     "escalation_routing": os.environ["AW_C_ESCALATION_ROUTING"],
     "plagiarism_ngram": as_int("AW_C_PLAGIARISM_NGRAM"),
+    # post_category / research_mode / rigor_tier (requirements §2.4, §4 Step 1/2):
+    # post_category is blank until the human names it (Step 1 asks if unset, or the
+    # scope template sets it directly). research_mode defaults to "deep" (unchanged,
+    # full-rigor behavior) until Step 1 resolves a lighter tier for it. rigor_tier is
+    # set by Step 1 alongside post_category, purely for readability in state/manifest.
+    "post_category": os.environ["AW_C_POST_CATEGORY"],
+    "research_mode": os.environ["AW_C_RESEARCH_MODE"],
+    "rigor_tier": None,
 }
 
 run_id = os.environ["AW_RUN_ID"]

@@ -5,6 +5,48 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-08-10
+
+### Added
+- **`post_category` control — rigor scales to what you're actually writing
+  (requirements §2.4a).** The original pipeline assumed every piece needs primary-source
+  research and an independently-fact-checked adversarial review — right for a reported,
+  argumentative piece, badly wrong (and the dominant source of run time/token cost) for a
+  personal post that makes no externally-checkable claims. Step 1 now asks (or reads from
+  the scope template) which of 8 categories a post is — `musings`, `photos`, `travel`
+  (**reflective** tier: Step 2 becomes a personal-context capture pass, no external
+  research; Step 8's adversarial cap drops to 1 and will virtually always stop clean on
+  round 1, since there's nothing to fact-check), `learnings`, `movies`, `books`, `mba`
+  (**light-check** tier: Step 2 trims to spot-checking only the handful of hard, named
+  facts a piece states — a film's year/director, a book's author — skipping territory
+  mapping, counter-evidence hunting, and multi-source triangulation; adversarial cap 2),
+  or `deep-dive` (**journalistic** tier: the original full pipeline, unchanged). The
+  resolved `post_category`/`rigor_tier`/`research_mode` are recorded in `state.controls`
+  and surfaced in the manifest, which states plainly when research was **skipped by
+  design** for the category — a different, honest claim from "attempted, source access
+  unavailable" (§2.5, §11 honest-degradation).
+- `scripts/init-run.sh` accepts `AW_POST_CATEGORY` / `AW_RESEARCH_MODE` env vars (same
+  pattern as every other `AW_*` control), defaulting to `""` / `"deep"` so a run with no
+  category set behaves exactly as before. `scripts/make-manifest.sh` surfaces the tier
+  and an honest one-line explanation of what it did or didn't check in `manifest.json`/
+  `manifest.md`. `templates/scope-template.md` gained an optional *Post category* field
+  (same pattern as *Referencing / citation style*) so a returning user can set it without
+  the Step 1 question.
+
+### Changed
+- **Softened the global defaults — they were tuned for deeply-reported journalism and
+  were too heavy even for the `deep-dive` tier.** `per_gate_cap` default 3 → **2**;
+  `adversarial_cap` default (deep-dive tier) 5 → **3**. Both remain fully
+  `userConfig`-overridable. `tests/phase1-core.sh`, `tests/phase4-review.sh`, and
+  `tests/acceptance.sh` updated: assertions that exercise a *specific* cap value now pass
+  it explicitly via `AW_PER_GATE_CAP`/`AW_ADVERSARIAL_CAP` rather than relying on the
+  shipped default, so the algorithm under test stays decoupled from whatever the default
+  happens to be.
+- `docs/requirements.md` (§2.4, new §2.4a, §4 Step 1/2, §3.7, §8), `docs/contracts.md`
+  (§2, §3, §4 state schema), and `README.md` updated to document the new control, the
+  softened defaults, and the honest-degradation distinction between "skipped by design"
+  and "attempted, unavailable."
+
 ## [0.4.3] — 2026-08-09
 
 ### Fixed

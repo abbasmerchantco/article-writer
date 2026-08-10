@@ -5,6 +5,14 @@ it through an **8-step, gated workflow** with **deterministic loop caps** and an
 **adversarial fact-check** review. Built as a batch tool: every run is isolated into its
 own numbered folder set.
 
+Rigor scales to what you're actually writing. Pick a **post category** at Step 1 (or set
+it in the scope template) and the run adjusts: `musings` / `photos` / `travel` skip
+external research and adversarial fact-checking entirely (there's nothing to
+independently verify in a personal account); `learnings` / `movies` / `books` / `mba`
+spot-check only the handful of hard, named facts a piece states, skipping full
+triangulation; `deep-dive` keeps the original full pipeline for reported, argumentative
+work. See *Post category & rigor tier* below.
+
 **Docs:** [`docs/requirements.md`](docs/requirements.md) (full spec) ·
 [`docs/contracts.md`](docs/contracts.md) (state/interface contracts) ·
 [`docs/architecture-decision.md`](docs/architecture-decision.md) (why gating is split the
@@ -43,8 +51,9 @@ the `output_root` control (see *Controls* below) — in `input/` (commission), `
 7. **Rest, then second eyes** — cold read; signal vs. noise (run is resumable for real rest).
 8. **Adversarial review** — isolated agent re-sources claims independently and classifies them.
 
-Steps 1–7 each end in a lightweight QA gate (cap 3 → escalate upstream). Step 8 is the one
-heavyweight gate: min 1 / max 5 reviews with severity-based routing.
+Steps 1–7 each end in a lightweight QA gate (cap 2 → escalate upstream). Step 8 is the one
+heavyweight gate: min 1 / max 3 reviews for a deep-dive post (lower still for reflective/
+light-check posts — see *Post category & rigor tier*), with severity-based routing.
 
 ## Components
 
@@ -93,11 +102,28 @@ All scripts are self-contained, use `python3` for JSON (no `jq` dependency), and
 **no network calls** — the only external capability the plugin uses is the declared
 independent source access (web search/fetch) in Steps 2 and 8.
 
+## Post category & rigor tier
+
+`post_category` (asked at Step 1 if you leave it blank — in `userConfig` or the scope
+template) is what actually controls run time and token cost, because it decides how much
+of Steps 2 and 8 run at all:
+
+| You pick | Tier | Step 2 (research) | Step 8 (adversarial cap) |
+|---|---|---|---|
+| `musings`, `photos`, `travel` | reflective | skipped — a personal-context capture pass instead | 1 (stops clean on round 1; nothing to fact-check) |
+| `learnings`, `movies`, `books`, `mba` | light-check | spot-checks only the named hard facts (film year/director, book author, etc.) | 2 |
+| `deep-dive` | journalistic | full territory-mapping, counter-evidence hunting, source triangulation | whatever `adversarial_cap` is configured to (default 3) |
+
+The manifest records `post_category`/`rigor_tier`/`research_mode` and is explicit that a
+reflective/light-check run **skipped research by design**, not because source access was
+unavailable — see *Honest limits*.
+
 ## Controls
 
 Every tuning knob (audience, angle, length, tone, source policy, quality threshold,
-per-gate cap, adversarial cap, escalation routing) has a default and is overridable via the
-manifest `userConfig` or per run. See `plugin.json`.
+per-gate cap, adversarial cap, escalation routing, post category) has a default and is
+overridable via the manifest `userConfig` or per run. See `plugin.json`. The per-gate cap
+and the deep-dive adversarial cap were softened to **2** and **3** (from 3 and 5).
 
 **Runs root (`output_root`).** By default, runs are stored under `input/`, `interim/`,
 `output/` in whatever directory Claude was launched from — which can be a temporary or
@@ -128,7 +154,13 @@ bash tests/acceptance.sh         # every requirements §10 acceptance criterion
 The plugin verifies **external truth** only where it has independent source access;
 otherwise it checks **internal consistency** only, and the run manifest says which was
 obtained — it never implies fact-checking it did not perform. All loops are bounded
-(per-gate 3, adversarial 5), enforced by scripts, not model self-report.
+(per-gate 2, adversarial 3 for deep-dive / 1 for reflective / 2 for light-check),
+enforced by scripts, not model self-report.
+
+A `reflective`/`light-check` run's manifest states plainly that research was **skipped
+by design** for that post category, not attempted-and-unavailable — those are different
+claims, and conflating them would be exactly the kind of overclaiming this plugin exists
+to avoid.
 
 **Originality:** the Step 5 originality pass detects copying by comparing the draft against
 the source excerpts the run captured (and independent search where available); with no

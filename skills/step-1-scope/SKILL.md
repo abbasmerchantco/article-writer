@@ -100,6 +100,52 @@ referencing style. **Do not silently pick one.** Resolve it in this order:
    citations with `scripts/format-references.sh`. The default if the human truly has no
    preference is `apa`.
 
+## Resolve the post category & rigor tier (ask explicitly)
+
+How much external research and adversarial fact-checking a run does is driven by
+**what kind of post this is**, not a one-size-fits-all default. A late-night musing
+and a deeply reported explainer do not deserve the same amount of source-hunting.
+**Do not silently pick a tier or skip this** — resolve it in this order:
+
+1. If the human wrote a category in the template's *Post category* field, or
+   `controls.post_category` is already set to a non-blank explicit value, use that
+   (match case-insensitively; an unrecognized token is treated as `deep-dive` — tell
+   the human you didn't recognize it and are defaulting to full rigor, don't guess a
+   lighter tier for an unknown category).
+2. **Otherwise, ASK the human explicitly** with `AskUserQuestion`, presenting all of
+   these options (the tool shows a few as buttons and an "Other" entry — name the
+   rest in the question text so every option is visible):
+
+   - **musings** — late-night thoughts, personal reflection *(reflective tier)*
+   - **photos** — captions / accounts of memories *(reflective tier)*
+   - **travel** — trip plans or trip logs *(reflective tier)*
+   - **learnings** — systems, techniques, ideas worth sharing *(light-check tier)*
+   - **movies** — an opinion/review of a film *(light-check tier)*
+   - **books** — a summary/reflection on a book *(light-check tier)*
+   - **mba** — course notes and reflections *(light-check tier)*
+   - **deep-dive** — anything else needing full research + independent fact-checking
+     *(journalistic tier)*
+
+3. **Map the category to a rigor tier** and set the derived controls accordingly.
+   Never invent a tier outside this table:
+
+   | `post_category` | `rigor_tier` | `research_mode` | `adversarial_cap` |
+   |---|---|---|---|
+   | musings, photos, travel | `reflective` | `none` — no external research; Step 2 becomes a personal-context capture pass | `1` |
+   | learnings, movies, books, mba | `light-check` | `spot-check` — verify only the handful of hard, named facts the piece states | `2` |
+   | deep-dive (or unrecognized) | `journalistic` | `deep` — full territory mapping, counter-evidence hunting, source triangulation | leave `controls.adversarial_cap` exactly as it already is (the plugin's configured/default value) — do **not** overwrite an explicit human/config override with a tier default |
+
+   Write `controls.post_category` (the raw token), `controls.rigor_tier`, and
+   `controls.research_mode` per the table. For `reflective` and `light-check`, also
+   overwrite `controls.adversarial_cap` with the table value — this is a deliberate,
+   explicit tier override, not a silent substitution; mention it to the human in your
+   Step 1 summary (e.g. "category: musings → no research step, one quick review pass,
+   no fact-checking — say so if you'd rather this got the full treatment"). Leave
+   `controls.adversarial_min`, `controls.per_gate_cap`, and every other control
+   untouched — the tier only governs research depth and the adversarial ceiling.
+   `controls.rigor_tier` is read by Step 2 and reported in the manifest; it never
+   gates anything by itself.
+
 ## ANTI-BIAS requirement (provisional hypothesis)
 
 The hypothesis stays **provisional** to defend against confirmation bias. It must
@@ -150,6 +196,11 @@ Write to `interim/<run_id>/state.json`:
 - `scope.template_completed = true`, `scope.missing_mandatory = []`.
 - `controls.citation_style` — the referencing scheme, explicitly chosen (one of the menu
   tokens; default `apa`). Never leave this unresolved.
+- `controls.post_category`, `controls.rigor_tier`, `controls.research_mode` — the
+  resolved post category and its derived rigor tier/research mode (see *Resolve the
+  post category & rigor tier* above). `controls.adversarial_cap` is also overwritten
+  per the tier table for `reflective`/`light-check`. Never leave `post_category`
+  unresolved.
 - `hypothesis.text` — the provisional working hypothesis / central question.
 - `hypothesis.hardened_to_thesis = false` (stays false until Step 3).
 - `current_step = 1`, `status = "step-1"` (or as your orchestrator advances it toward

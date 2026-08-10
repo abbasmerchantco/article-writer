@@ -31,6 +31,20 @@ check "state.json is valid JSON" "jvalid interim/$run1/state.json"
 check "state status is awaiting-scope" "python3 -c \"import json;print(json.load(open('interim/$run1/state.json'))['status'])\" | grep -q awaiting-scope"
 check "raw_subject preserved verbatim in trigger" "python3 -c \"import json;print(json.load(open('input/$run1/trigger.json'))['raw_subject'])\" | grep -q 'Return to office economics'"
 
+# post_category / research_mode / rigor_tier (requirements §2.4, §4 Step 1/2) - blank/
+# "deep" until Step 1 resolves them; adversarial_cap default softened 5 -> 3.
+check "default post_category is blank" "[ \"\$(python3 -c \"import json;print(repr(json.load(open('interim/$run1/state.json'))['controls']['post_category']))\")\" = \"''\" ]"
+check "default research_mode is deep" "[ \"\$(python3 -c \"import json;print(json.load(open('interim/$run1/state.json'))['controls']['research_mode'])\")\" = 'deep' ]"
+check "default rigor_tier is null (unset until Step 1)" "python3 -c \"import json;assert json.load(open('interim/$run1/state.json'))['controls']['rigor_tier'] is None\""
+check "default adversarial_cap is now 3 (softened from 5)" "[ \"\$(python3 -c \"import json;print(json.load(open('interim/$run1/state.json'))['controls']['adversarial_cap'])\")\" = '3' ]"
+
+# AW_POST_CATEGORY / AW_RESEARCH_MODE env overrides reach state.controls, same pattern
+# as every other AW_* control.
+outc2="$(AW_POST_CATEGORY=musings AW_RESEARCH_MODE=none "$INIT" --force-new "A musing about slow mornings" 2>/dev/null)"
+runc2="${outc2#RUN }"
+check "AW_POST_CATEGORY reaches state.controls.post_category" "[ \"\$(python3 -c \"import json;print(json.load(open('interim/$runc2/state.json'))['controls']['post_category'])\")\" = 'musings' ]"
+check "AW_RESEARCH_MODE reaches state.controls.research_mode" "[ \"\$(python3 -c \"import json;print(json.load(open('interim/$runc2/state.json'))['controls']['research_mode'])\")\" = 'none' ]"
+
 # 2. Second run (force-new) -> 00002
 out2="$("$INIT" --force-new "A totally different subject about bees" 2>/dev/null)"
 run2="${out2#RUN }"
@@ -58,10 +72,15 @@ check "folders sort chronologically with leading zeros" "printf '%s' \"\$sorted\
 echo "== gate-counter.sh (integration: real state.json from init-run) =="
 STATE="interim/$run1/state.json"
 
-# 6. step-5 fail x3 -> RETRY, RETRY, ESCALATE step-3 (cap 3)
-r1="$("$GATE" "$STATE" step-5 fail 2>/dev/null)"
-r2="$("$GATE" "$STATE" step-5 fail 2>/dev/null)"
-r3="$("$GATE" "$STATE" step-5 fail 2>/dev/null)"; rc3=$?
+# 6. state.controls.per_gate_cap resolved from init-run's (softened) default is 2
+check "init-run's default per_gate_cap is now 2 (softened from 3, requirements §2.4)" \
+  "[ \"\$(python3 -c \"import json;print(json.load(open('$STATE'))['controls']['per_gate_cap'])\")\" = '2' ]"
+
+# 7. step-5 fail x3 with an explicit cap=3 override -> RETRY, RETRY, ESCALATE step-3
+# (exercised at cap 3 explicitly, decoupled from whatever the shipped default is)
+r1="$(AW_PER_GATE_CAP=3 "$GATE" "$STATE" step-5 fail 2>/dev/null)"
+r2="$(AW_PER_GATE_CAP=3 "$GATE" "$STATE" step-5 fail 2>/dev/null)"
+r3="$(AW_PER_GATE_CAP=3 "$GATE" "$STATE" step-5 fail 2>/dev/null)"; rc3=$?
 check "step-5 fail #1 -> RETRY 1" "[ '$r1' = 'RETRY 1' ]"
 check "step-5 fail #2 -> RETRY 2" "[ '$r2' = 'RETRY 2' ]"
 check "step-5 fail #3 -> ESCALATE step-3" "[ '$r3' = 'ESCALATE step-3' ]"
@@ -70,22 +89,23 @@ check "state.json still valid after mutations" "jvalid '$STATE'"
 check "step-5 counter reset to 0 after escalation" "[ \"\$($GATE '$STATE' step-5 get 2>/dev/null)\" = '0' ]"
 check "escalation_history recorded one entry" "python3 -c \"import json;print(len(json.load(open('$STATE'))['escalation_history']))\" | grep -q '^1$'"
 
-# 7. pass resets counter
+# 8. pass resets counter
 "$GATE" "$STATE" step-2 fail >/dev/null 2>&1
 p="$("$GATE" "$STATE" step-2 pass 2>/dev/null)"
 check "pass prints PASS and resets" "[ '$p' = 'PASS' ] && [ \"\$($GATE '$STATE' step-2 get 2>/dev/null)\" = '0' ]"
 
-# 8. step-1 escalates to HALT-HUMAN at cap
-"$GATE" "$STATE" step-1 fail >/dev/null 2>&1
-"$GATE" "$STATE" step-1 fail >/dev/null 2>&1
-h="$("$GATE" "$STATE" step-1 fail 2>/dev/null)"
+# 9. step-1 escalates to HALT-HUMAN at cap (explicit cap=3 override, decoupled from
+#    whichever default per_gate_cap ships)
+AW_PER_GATE_CAP=3 "$GATE" "$STATE" step-1 fail >/dev/null 2>&1
+AW_PER_GATE_CAP=3 "$GATE" "$STATE" step-1 fail >/dev/null 2>&1
+h="$(AW_PER_GATE_CAP=3 "$GATE" "$STATE" step-1 fail 2>/dev/null)"
 check "step-1 at cap -> ESCALATE HALT-HUMAN" "[ '$h' = 'ESCALATE HALT-HUMAN' ]"
 
-# 9. AW_PER_GATE_CAP override -> immediate escalate
+# 10. AW_PER_GATE_CAP override -> immediate escalate
 e="$(AW_PER_GATE_CAP=1 "$GATE" "$STATE" step-4 fail 2>/dev/null)"
 check "AW_PER_GATE_CAP=1 escalates step-4 immediately to step-3" "[ '$e' = 'ESCALATE step-3' ]"
 
-# 10. invalid usage guards
+# 11. invalid usage guards
 "$GATE" "$STATE" step-9 fail >/dev/null 2>&1; check "unknown gate exits 1" "[ \$? -eq 1 ]"
 "$GATE" "$STATE" step-5 frobnicate >/dev/null 2>&1; check "unknown action exits 1" "[ \$? -eq 1 ]"
 "$GATE" /nonexistent/state.json step-1 get >/dev/null 2>&1; check "missing state file exits 1" "[ \$? -eq 1 ]"

@@ -44,18 +44,23 @@ setrounds 0
 mkledger '{"verification_guarantee":"external-truth","ledger":[{"claim":"x","verdict":"wrong","load_bearing":false}]}'
 check "peripheral wrong -> ROUTE step-5" "[ \"\$($LOOP $STATE ledger.json 2>/dev/null)\" = 'ROUTE step-5' ]"
 
+# Tests 5-7 exercise the cap-5 severity/cap-reached algorithm explicitly, via
+# AW_ADVERSARIAL_CAP=5 - decoupled from whatever the shipped default is (softened to 3
+# as of requirements §2.4; the algorithm itself is what's under test here, not the
+# default value).
+
 # 5. load-bearing wrong early -> ROUTE step-3
 setrounds 0
 mkledger '{"verification_guarantee":"external-truth","ledger":[{"claim":"x","verdict":"misrepresented","load_bearing":true}]}'
-check "load-bearing wrong early -> ROUTE step-3" "[ \"\$($LOOP $STATE ledger.json 2>/dev/null)\" = 'ROUTE step-3' ]"
+check "load-bearing wrong early -> ROUTE step-3" "[ \"\$(AW_ADVERSARIAL_CAP=5 $LOOP $STATE ledger.json 2>/dev/null)\" = 'ROUTE step-3' ]"
 
 # 6. load-bearing wrong PERSISTED (round>=midpoint of cap 5 =3) -> ROUTE step-1
 setrounds 2
-check "load-bearing wrong persisted -> ROUTE step-1" "[ \"\$($LOOP $STATE ledger.json 2>/dev/null)\" = 'ROUTE step-1' ]"
+check "load-bearing wrong persisted -> ROUTE step-1" "[ \"\$(AW_ADVERSARIAL_CAP=5 $LOOP $STATE ledger.json 2>/dev/null)\" = 'ROUTE step-1' ]"
 
 # 7. cap reached with problems -> CAP-REACHED, exit 3, rounds never exceed cap
 setrounds 4
-o7="$("$LOOP" "$STATE" ledger.json 2>/dev/null)"; rc=$?
+o7="$(AW_ADVERSARIAL_CAP=5 "$LOOP" "$STATE" ledger.json 2>/dev/null)"; rc=$?
 check "cap reached -> CAP-REACHED 1" "[ '$o7' = 'CAP-REACHED 1' ]"
 check "cap-reached exits 3" "[ $rc -eq 3 ]"
 check "rounds hard-capped at 5" "[ \"\$(python3 -c \"import json;print(json.load(open('$STATE'))['adversarial']['rounds'])\")\" = 5 ]"

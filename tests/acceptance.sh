@@ -16,9 +16,13 @@ cd "$WORK"
 run="$("$INIT" "Acceptance walk subject" 2>/dev/null)"; run="${run#RUN }"
 S="interim/$run/state.json"
 
-echo "§10.1 [runtime] gate fails 3x -> escalate not 4th loop"
-r1="$("$GATE" "$S" step-4 fail 2>/dev/null)"; r2="$("$GATE" "$S" step-4 fail 2>/dev/null)"
-r3="$("$GATE" "$S" step-4 fail 2>/dev/null)"; rc=$?
+echo "§10.1 [runtime] gate fails cap-times -> escalate, not a further loop"
+# per_gate_cap default is now 2 (softened from 3 - requirements §2.4). Use an explicit
+# AW_PER_GATE_CAP=3 override here so this criterion is exercised at its historical cap
+# value regardless of the shipped default, which changes independently of this test.
+r1="$(AW_PER_GATE_CAP=3 "$GATE" "$S" step-4 fail 2>/dev/null)"
+r2="$(AW_PER_GATE_CAP=3 "$GATE" "$S" step-4 fail 2>/dev/null)"
+r3="$(AW_PER_GATE_CAP=3 "$GATE" "$S" step-4 fail 2>/dev/null)"; rc=$?
 ck "step-4 escalates to step-3 on 3rd fail, exit 3" "[ '$r3' = 'ESCALATE step-3' ] && [ $rc -eq 3 ]"
 
 echo "§10.2 [static] Step 8 reviewer re-sources WITHOUT reading Step 2 citations"

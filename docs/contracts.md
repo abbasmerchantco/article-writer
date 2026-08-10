@@ -92,9 +92,12 @@ Behaviour:
 **Exit codes:** `0` success · `2` duplicate slug (nothing created) · `1` usage/other error.
 
 **Controls:** defaults live in the manifest `userConfig`; `init-run.sh` accepts the
-resolved control set via env vars prefixed `AW_` (e.g. `AW_PER_GATE_CAP=3`,
-`AW_ADVERSARIAL_CAP=5`, `AW_AUDIENCE=...`, `AW_OUTPUT_ROOT=...`). Any unset control falls
-back to the §4 default. The full resolved control set is recorded in both `trigger.json`
+resolved control set via env vars prefixed `AW_` (e.g. `AW_PER_GATE_CAP=2`,
+`AW_ADVERSARIAL_CAP=3`, `AW_AUDIENCE=...`, `AW_OUTPUT_ROOT=...`, `AW_POST_CATEGORY=...`,
+`AW_RESEARCH_MODE=...`). Any unset control falls back to the §4 default (`per_gate_cap`
+and `adversarial_cap` softened from 3/5 to 2/3 — requirements §2.4; `post_category`
+defaults to `""` and `research_mode` to `"deep"` until Step 1 resolves them for real —
+requirements §2.4a). The full resolved control set is recorded in both `trigger.json`
 and `state.json`.
 
 ---
@@ -114,7 +117,7 @@ scripts/gate-counter.sh <state_path> <gate> fail     # increment; enforce cap
 
 **`fail` semantics (cap enforcement, §5.1):**
 - Increment the gate's fail counter, then compare against the cap (`AW_PER_GATE_CAP`,
-  default **3**).
+  default **2**, softened from the original 3 — requirements §2.4).
 - If `count < cap`: print `RETRY <count>` and exit 0.
 - If `count >= cap`: do **not** allow a further local loop — print `ESCALATE <target>`
   using the routing table below, append to `escalation_history`, reset the gate counter to
@@ -176,12 +179,15 @@ every step entry and written on every step exit. Counters mutated **only** by
     "tone": "neutral, plain",
     "source_policy": "default",
     "source_quality_threshold": "peer-reviewed / reputable only",
-    "per_gate_cap": 3,
-    "adversarial_cap": 5,
+    "per_gate_cap": 2,
+    "adversarial_cap": 3,
     "adversarial_min": 1,
     "escalation_routing": "default",
     "citation_style": "apa",
-    "output_format": "docx"
+    "output_format": "docx",
+    "post_category": "",
+    "research_mode": "deep",
+    "rigor_tier": null
   },
 
   "current_step": 0,
@@ -255,6 +261,16 @@ every step entry and written on every step exit. Counters mutated **only** by
   renders `references[]` in this style (both the in-text form and the bibliography).
 - `controls.output_format`: the final deliverable format for the article. `docx` (default)
   or `md`. `make-manifest.sh` emits `article.docx` (via `scripts/to-docx.sh`) accordingly.
+- `controls.post_category` / `controls.rigor_tier` / `controls.research_mode`
+  (requirements §2.4a): `post_category` is one of `musings|photos|travel` (reflective),
+  `learnings|movies|books|mba` (light-check), or `deep-dive` (journalistic) — blank
+  (`""`) until Step 1 resolves it, never guessed. `rigor_tier` is the tier that maps to
+  (`reflective|light-check|journalistic`), `null` until resolved. `research_mode` is
+  `none|spot-check|deep` and is what `skills/step-2-research` actually branches on;
+  defaults to `deep` (unchanged, full-rigor behavior) so a pre-existing run with no
+  `post_category` set behaves exactly as before. Step 1 also overwrites
+  `controls.adversarial_cap` per the §2.4a tier table for `reflective`/`light-check`
+  runs (never for `journalistic`, which keeps whatever cap was already configured).
 - `placeholders[]`: each `{ "id": str, "text": "[check stat] ...", "resolved": bool }`.
 - `hypothesis.hardened_to_thesis`: false until Step 3 (requirements §4 Step 1/3).
 - `escalation_history[]`: each `{ "gate": str, "target": str, "at": iso8601 }`, appended

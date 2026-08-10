@@ -30,6 +30,92 @@ run root*.
 - If `hypothesis.text` is null or Step 1's gate has not passed, stop and return to
   Step 1; do not research against an unset scope.
 
+## Step 0 — Check `research_mode` first (post_category rigor tier)
+
+Step 1 already resolved `controls.research_mode` from the run's `post_category`
+(requirements §2.4, §4 Step 1). **Read it before doing anything else** — it decides
+which of the three subprocesses below you run. Never default to the heaviest one just
+because it's what this step used to always do.
+
+- **`research_mode: "none"`** (reflective tier — musings / photos / travel): skip
+  straight to *Mode: reflective — capture, don't research* below. Do not call
+  `WebSearch`/`WebFetch` at all for this run.
+- **`research_mode: "spot-check"`** (light-check tier — learnings / movies / books /
+  mba): use *Mode: spot-check — verify the named facts, nothing else* below.
+- **`research_mode: "deep"`** (journalistic tier — deep-dive, or absent on a
+  pre-existing run for backward compatibility): use *Mode: deep — the full
+  subprocess* below (everything in this file from "Step 0 — Check independent source
+  access" onward, unchanged).
+
+---
+
+### Mode: reflective — capture, don't research
+
+There is nothing here to independently verify — this is the human's own account,
+opinion, or memory, not a claim resting on outside evidence. Do **not** manufacture
+research to satisfy a gate that doesn't fit the content:
+
+1. Read `scope.reconciled` and the completed scope template for the material to draft
+   from (must-include points, angle, any specific memories/details the human already
+   gave you).
+2. Set `research.claims = []` and `research.open_questions = []` — unless the human's
+   own template flagged something they explicitly want fact-checked (e.g. a date they
+   weren't sure of inside an otherwise personal piece), in which case record *only*
+   that as a claim and check it, still without going into full triangulation mode.
+3. Leave `hypothesis.text` as Step 1 set it (a personal piece doesn't need a thesis
+   "hardened" against counter-evidence the way an argumentative one does).
+4. **Exit gate for this mode: "Is there enough personal detail/context captured to
+   draft from?"** — not "sourced + counter-evidence found." Pass immediately once
+   there's enough material; do not hold this gate open waiting for sourcing that will
+   never come.
+5. Pass via `gate-counter.sh ... step-2 pass` as usual (see *Exit gate* below), and
+   record `research.open_questions` noting, honestly, that external research was
+   skipped **by design** for this `post_category` — not because source access was
+   unavailable. This distinction matters for the manifest (§11 honest-degradation):
+   "skipped, none needed" is not the same claim as "attempted, unavailable."
+
+Skip *Source policy*, *Source-independence requirement*, *Stop when* / *Probe further
+when*, and *Capture structured references* below entirely for this mode — there is no
+research to police.
+
+### Mode: spot-check — verify the named facts, nothing else
+
+The piece will state a small number of hard, checkable facts (a film's release year
+and director, a book's author and publication year, a named framework/tool/technique,
+a course or case-study name) alongside the human's own opinion/experience, which is
+not itself a claim to verify. Trim the full subprocess down to just those facts:
+
+1. From `scope.reconciled` and the draft material, list the specific named facts that
+   will appear in the piece. Opinions, evaluations, and personal experience are not on
+   this list.
+2. Look each one up directly and confirm it — one reasonably reliable source per fact
+   is enough. Still obey the hard domain blocks in
+   `${CLAUDE_PLUGIN_ROOT}/config/source-policy.json` (never cite a blocked domain), but
+   you do **not** need to triangulate multiple independent sources, hunt disconfirming
+   evidence, seek saturation, or map the wider territory — none of that applies to a
+   review/notes piece whose substance is the human's own take.
+3. Record each spot-checked fact in `research.claims[]` with its source and tier as
+   usual (so `source-check.sh` and the manifest still see it), but do not require
+   `independent: true` corroboration — a single admissible source per fact is
+   sufficient at this tier.
+4. If a named fact can't be confirmed, record it in `research.open_questions[]` as
+   unsupported (routes per §5.2 same as always) rather than blocking on it forever.
+5. **Exit gate for this mode: "Are the handful of checkable facts confirmed?"** — not
+   the full "counter-evidence found" bar. There is no thesis to stress-test with an
+   opposing case; there's a film/book/technique to get the facts right about.
+
+Skip the full *Stop when* / *Probe further when* saturation-seeking criteria and the
+*Source-independence requirement*'s multi-source corroboration below for this mode —
+apply the *Source policy* (hard blocks) and *Documentation requirement* (paraphrase,
+attach source+tier) sections as normal, just scoped to the short fact list above.
+
+### Mode: deep — the full subprocess
+
+Unchanged. Continue with *Step 0 — Check independent source access* below and every
+section through *Outputs*, exactly as this file has always specified.
+
+---
+
 ## Step 0 — Check independent source access (do this first)
 
 Steps 2 and 8 require **independent source access** (web search / fetch or an
@@ -171,6 +257,11 @@ obtained, and it can only do that if this step recorded the truth.
 
 ## Exit gate — "Key claims sourced + counter-evidence found?"
 
+**This is the `research_mode: "deep"` gate question.** The `reflective` and
+`spot-check` modes above use their own, lighter gate question instead (see *Step 0 —
+Check `research_mode` first*) — do not hold a reflective or spot-check run to this
+full bar. What follows applies to `deep` mode only.
+
 The gate passes only when **every load-bearing claim rests on a sourced, sufficiently
 tiered whitelisted source**, *and* you have genuinely surfaced the counter-evidence /
 strongest opposing case — not merely confirmed the hypothesis. If key claims are still
@@ -220,7 +311,10 @@ Write to `interim/<run_id>/state.json`:
   claims still unsupported / needing independent re-sourcing, and any source-access
   limitation from Step 0.
 - `hypothesis.text` — the hypothesis **updated or confirmed** against the findings, but
-  still framed as a working hypothesis / central question.
+  still framed as a working hypothesis / central question. In `reflective` mode this
+  is simply left as Step 1 set it.
+- `controls.research_mode`/`controls.rigor_tier` — carried through unchanged from
+  Step 1; this step reads them, it does not set them.
 - `hypothesis.hardened_to_thesis` — **stays `false`.** Hardening into a settled thesis
   happens in **Step 3**, after research, never here.
 - `current_step = 2`, `status = "step-2"` (or as your orchestrator advances it toward

@@ -47,6 +47,11 @@ root is the current working directory** — resolve `<root>` first:
    records `verification_guarantee` accordingly, `review-loop.sh` downgrades an
    absent/invalid guarantee to `internal-consistency-only`, and `make-manifest.sh` states
    the obtained guarantee in the published manifest. Do not overclaim external truth.
+   **This is distinct from a `reflective`/`light-check` run skipping research by
+   *design*** (Step 1 resolved `controls.post_category`/`research_mode` — requirements
+   §2.4, §4 Step 1/2): "skipped, none needed for this kind of post" is not the same
+   statement as "attempted, source access unavailable," and the manifest should not
+   blur the two.
 6. **Source-tier policy is checkable (requirements §6).** Before publishing, a load-bearing
    claim must rest on a whitelisted, sufficiently-high tier. Run
    `${CLAUDE_PLUGIN_ROOT}/scripts/source-check.sh interim/<run_id>/state.json`; any

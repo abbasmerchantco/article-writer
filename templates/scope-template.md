@@ -25,6 +25,10 @@ mandatory field on your behalf).
 > If either of the two fields below is blank when you run `continue`, the run
 > hard-stops, tells you exactly which field is missing, and stays at
 > `awaiting-scope`. The agent will **never** guess these.
+>
+> For a quick personal post (musings, photos, travel, learnings, movies, books,
+> mba) these can be short — e.g. audience: "readers of my blog, general" and
+> purpose: "share the thought/experience honestly." They still can't be blank.
 
 ### 🔴 MANDATORY — Audience / target reader
 _Who is this for, and what do they already know? Name the reader and their assumed
@@ -107,6 +111,20 @@ blank to use the shipped defaults._
 **Your answer:**
 ```
 (optional — write here or leave blank)
+```
+
+### Post category (rigor tier)
+_What kind of post is this? This controls how much external research and
+adversarial fact-checking the run does — leave blank and Step 1 will ask you
+explicitly. Pick one:_
+_**musings** · **photos** · **travel** (reflective — no research, no fact-check,_
+_it's your own account) · **learnings** · **movies** · **books** · **mba**_
+_(light-check — only the handful of hard named facts get spot-checked) ·_
+_**deep-dive** (journalistic — full research + independent fact-check)._
+
+**Your answer:**
+```
+(optional — write here or leave blank; Step 1 will ask if blank)
 ```
 
 ### Referencing / citation style
